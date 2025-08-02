@@ -1,0 +1,7 @@
+[project]
+name = "dnn-pytorch"
+version = "0.1.0"
+description = "Project designed to simplify the process of training and using the deep learning models, of various types in PyTorch. Those types include: Classification, Segmentation, Reidentification, and more."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
