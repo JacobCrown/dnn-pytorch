@@ -1,0 +1,55 @@
+# Albumentations augmentation configuration
+
+HorizontalFlip:
+  p: 0.5
+
+Affine:
+  p: 0.8
+  translate_percent: [0.08, 0.08]
+  scale: [0.85, 1.15]
+  rotate: [-25, 25]
+  border_mode: 4
+  interpolation: 1
+  fill: 0
+
+Perspective:
+  p: 0.6
+
+GridDistortion:
+  p: 0.5
+
+CoarseDropout:
+  p: 0.5
+
+RandomBrightnessContrast:
+  p: 0.7
+
+RandomGamma:
+  gamma_limit: [80, 120]
+  p: 0.5
+
+RandomRain:
+  p: 0.3
+
+RandomFog:
+  p: 0.3
+
+RandomShadow:
+  p: 0.3
+
+RandomSnow:
+  p: 0.3
+
+OneOf:
+  p: 0.5
+  MotionBlur:
+    blur_limit: [3, 7]
+  MedianBlur:
+    blur_limit: [3, 7]
+  GaussianBlur:
+    blur_limit: [3, 7]
+
+HueSaturationValue:
+  p: 0.5
+  hue_shift_limit: 20
+  sat_shift_limit: 30
