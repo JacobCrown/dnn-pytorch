@@ -3,38 +3,45 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 
-def setup_logging(
-    log_file: str, max_bytes: int = 5_000_000, backup_count: int = 3
-) -> None:
-    """Configure logging to write both to a rotating file and console.
+def setup_logging(log_name: str) -> logging.Logger:
+    """Configure logging
 
     Args:
-        log_file: Full path to the log file (directory will be created)
-        max_bytes: Max size per log file before rotation
-        backup_count: Number of rotated files to keep
+        log_name: Name of the file the logs will come from
     """
-    log_path = Path(log_file)
-    log_path.parent.mkdir(parents=True, exist_ok=True)
+    # Determine log directory and file name
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / (Path(log_name).stem + ".log")
 
-    logger = logging.getLogger()
+    logger = logging.getLogger(Path(log_name).stem)
     logger.setLevel(logging.INFO)
-
-    # Clear existing handlers to avoid duplicates when re-running in Hydra cwd
-    logger.handlers.clear()
-
-    formatter = logging.Formatter(
-        fmt="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+    logger.propagate = (
+        False  # Prevent double logging if root logger is configured elsewhere
     )
 
-    file_handler = RotatingFileHandler(
-        filename=str(log_path), maxBytes=max_bytes, backupCount=backup_count
-    )
-    file_handler.setLevel(logging.INFO)
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
+    # Only add handlers if not already present (avoid duplicate logs)
+    if not logger.handlers:
+        # Console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        console_fmt = logging.Formatter(
+            "[%(asctime)s] %(levelname)s | %(name)s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+        console_handler.setFormatter(console_fmt)
+        logger.addHandler(console_handler)
 
-    console = logging.StreamHandler()
-    console.setLevel(logging.INFO)
-    console.setFormatter(formatter)
-    logger.addHandler(console)
+        # Rotating file handler
+        file_handler = RotatingFileHandler(
+            log_file, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+        )
+        file_handler.setLevel(logging.INFO)
+        file_fmt = logging.Formatter(
+            "[%(asctime)s] %(levelname)s | %(name)s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+        file_handler.setFormatter(file_fmt)
+        logger.addHandler(file_handler)
+
+    return logger

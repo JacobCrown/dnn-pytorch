@@ -5,12 +5,13 @@ import numpy as np
 import torch
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, random_split, Dataset
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
-from PIL import Image
-from torchvision import datasets
+
+
+from src.classification.config import TrainingConfig
 
 
 def set_seed(seed: int = 42) -> None:
@@ -27,12 +28,10 @@ def set_seed(seed: int = 42) -> None:
 
 
 def create_data_loaders(
-    train_dataset,
-    val_dataset=None,
-    test_dataset=None,
-    batch_size: int = 32,
-    num_workers: int = 4,
-    shuffle: bool = True,
+    config: TrainingConfig,
+    train_dataset: Dataset,
+    val_dataset: Optional[Dataset] = None,
+    test_dataset: Optional[Dataset] = None,
 ) -> Tuple[DataLoader, Optional[DataLoader], Optional[DataLoader]]:
     """Create data loaders for training, validation, and test sets.
 
@@ -40,39 +39,37 @@ def create_data_loaders(
         train_dataset: Training dataset
         val_dataset: Validation dataset (optional)
         test_dataset: Test dataset (optional)
-        batch_size: Batch size for data loaders
-        num_workers: Number of worker processes
-        shuffle: Whether to shuffle the data
+        config: Training configuration
 
     Returns:
         Tuple of (train_loader, val_loader, test_loader)
     """
     train_loader = DataLoader(
         train_dataset,
-        batch_size=batch_size,
-        shuffle=shuffle,
-        num_workers=num_workers,
-        pin_memory=True,
+        batch_size=config.batch_size,
+        shuffle=config.shuffle,
+        num_workers=config.num_workers,
+        pin_memory=config.pin_memory,
     )
 
     val_loader = None
     if val_dataset is not None:
         val_loader = DataLoader(
             val_dataset,
-            batch_size=batch_size,
-            shuffle=False,
-            num_workers=num_workers,
-            pin_memory=True,
+            batch_size=config.batch_size,
+            shuffle=config.shuffle,
+            num_workers=config.num_workers,
+            pin_memory=config.pin_memory,
         )
 
     test_loader = None
     if test_dataset is not None:
         test_loader = DataLoader(
             test_dataset,
-            batch_size=batch_size,
-            shuffle=False,
-            num_workers=num_workers,
-            pin_memory=True,
+            batch_size=config.batch_size,
+            shuffle=config.shuffle,
+            num_workers=config.num_workers,
+            pin_memory=config.pin_memory,
         )
 
     return train_loader, val_loader, test_loader

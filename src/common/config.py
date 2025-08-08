@@ -113,27 +113,11 @@ def _resolve_optional_type(tp):
 
 
 @dataclass
-class AugmentationSpec(BaseConfig):
-    """A single Albumentations transform description."""
+class AugmentationConfig(BaseConfig):
+    """Collection of Albumentations transforms."""
 
     name: str
     params: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class StageAugmentConfig(BaseConfig):
-    """Augmentations for a particular phase (e.g., train, validation)."""
-
-    augment: List[AugmentationSpec] = field(default_factory=list)
-    preprocess: List[AugmentationSpec] = field(default_factory=list)
-
-
-@dataclass
-class AugmentationConfig(BaseConfig):
-    """Collection of augmentation pipelines for all dataset splits."""
-
-    train: StageAugmentConfig = field(default_factory=StageAugmentConfig)
-    validation: StageAugmentConfig = field(default_factory=StageAugmentConfig)
 
 
 @dataclass
@@ -148,5 +132,13 @@ class OptimizerConfig(BaseConfig):
 class SchedulerConfig(BaseConfig):
     """Wrapper around torch.optim.lr_scheduler parameters."""
 
-    name: str
+    name: str = "cosine"
+    params: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class LossFunctionConfig(BaseConfig):
+    """Wrapper around torch.nn.functional parameters."""
+
+    name: str = "cross_entropy"
     params: Dict[str, Any] = field(default_factory=dict)

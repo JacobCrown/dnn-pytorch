@@ -1,29 +1,36 @@
 # Training hyperparameters
 
 epochs: 5
-batch_size: 64
+batch_size: 16
 learning_rate: 0.001
 weight_decay: 0.0001
-optimizer: adam  # options: adam, adamw, sgd
-momentum: 0.9    # used when optimizer == sgd
+num_workers: 4
+pin_memory: true
+shuffle: true
+
+optimizer:
+  name: adam  # options: adam, adamw, sgd
+  params:
+    momentum: 0.9    # used when optimizer == sgd
 
 # LR scheduler
-scheduler: cosine   # options: cosine, step, plateau, none
-scheduler_params:
-  T_max: 100
-  eta_min: 0.0001
+scheduler:
+  name: cosine   # options: cosine, step, plateau, none
+  params:
+    T_max: 100
+    eta_min: 0.0001
 
 # Loss function
-loss_function: cross_entropy  # options: cross_entropy, focal
-label_smoothing: 0.0          # used by cross_entropy
-focal_gamma: 2.0              # used by focal
-focal_alpha: null             # used by focal (optional float or null)
+loss_function:
+  name: cross_entropy  # options: cross_entropy, focal
+  params:
+    label_smoothing: 0.0          # used by cross_entropy
 
 # Mixed precision
-amp: false
+use_amp: false
 
 # Gradient clipping (null disables)
-grad_clip: null
+gradient_clip: null
 
 # Checkpointing
 save_freq: 1           # save checkpoint every N epochs (checkpoint_XXX.pth)

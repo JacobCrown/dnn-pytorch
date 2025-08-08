@@ -13,6 +13,8 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 from sklearn.metrics import confusion_matrix, classification_report
 
+from src.classification.config import TrainingConfig
+
 
 class ClassificationTrainer:
     """Trainer class for classification models."""
@@ -20,17 +22,17 @@ class ClassificationTrainer:
     def __init__(
         self,
         model: nn.Module,
+        criterion: nn.Module,
+        optimizer: optim.Optimizer,
+        scheduler: optim.lr_scheduler._LRScheduler,
         train_loader: DataLoader,
-        val_loader: Optional[DataLoader] = None,
-        criterion: Optional[nn.Module] = None,
-        optimizer: Optional[optim.Optimizer] = None,
-        scheduler: Optional[optim.lr_scheduler._LRScheduler] = None,
-        cfg: Optional[DictConfig] = None,
-        train_cfg: Optional[DictConfig] = None,
+        val_loader: DataLoader,
+        train_cfg: TrainingConfig,
+        root_dir: str,
+        test_loader: Optional[DataLoader] = None,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
         save_dir: str = "checkpoints",
         log_dir: str = "logs",
-        num_classes: Optional[int] = None,
     ):
         """Initialize the trainer.
 
@@ -44,40 +46,33 @@ class ClassificationTrainer:
             device: Device to train on
             save_dir: Directory to save checkpoints
             log_dir: Directory to save logs
-            num_classes: Number of classes (for metrics calculation)
         """
         self.model = model.to(device)
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.device = device
-        self.save_dir = Path(save_dir)
-        self.log_dir = Path(log_dir)
+        self.root_dir = Path(root_dir)
+        self.save_dir = Path(root_dir) / save_dir
+        self.log_dir = Path(root_dir) / log_dir
 
         # Create directories
         self.save_dir.mkdir(parents=True, exist_ok=True)
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
         # Setup loss, optimizer, and scheduler
-        self.criterion = criterion or nn.CrossEntropyLoss()
-        self.optimizer = optimizer or optim.Adam(model.parameters(), lr=0.001)
-        # Accept either _LRScheduler or ReduceLROnPlateau
-        self.scheduler = scheduler  # type: ignore[assignment]
+        self.criterion = criterion
+        self.optimizer = optimizer
+        self.scheduler = scheduler
 
-        # Resolve training sub-config (may be top-level `train` or provided directly)
-        resolved_train_cfg = train_cfg
-        if resolved_train_cfg is None and cfg is not None:
-            resolved_train_cfg = getattr(cfg, "train", None)
+        # Training configuration
+        self.resume = train_cfg.resume
+        self.save_freq = train_cfg.save_freq
+        self.save_best_only = train_cfg.save_best_only
+        self.early_stopping_patience = train_cfg.early_stopping_patience
 
-        self.use_amp = (
-            bool(getattr(resolved_train_cfg, "amp", False))
-            if resolved_train_cfg is not None
-            else False
-        )
-        self.grad_clip = (
-            getattr(resolved_train_cfg, "grad_clip", None)
-            if resolved_train_cfg is not None
-            else None
-        )
+        # Mixed precision
+        self.use_amp = train_cfg.use_amp
+        self.grad_clip = train_cfg.gradient_clip
         self.scaler = GradScaler(device=self.device, enabled=self.use_amp)
 
         # Setup logging
@@ -87,10 +82,6 @@ class ClassificationTrainer:
         self.current_epoch = 0
         self.best_val_loss = float("inf")
         self.best_val_acc = 0.0
-        self.num_classes = num_classes
-        self.cfg = (
-            OmegaConf.to_container(cfg, resolve=True) if cfg is not None else None
-        )
 
         # Metrics tracking
         self.train_losses = []
@@ -180,9 +171,6 @@ class ClassificationTrainer:
         Returns:
             Tuple of (average_loss, accuracy)
         """
-        if self.val_loader is None:
-            return 0.0, 0.0
-
         self.model.eval()
         total_loss = 0.0
         correct = 0
@@ -220,15 +208,11 @@ class ClassificationTrainer:
     def train(
         self,
         num_epochs: int,
-        save_freq: int = 1,
-        early_stopping_patience: Optional[int] = None,
     ) -> Dict[str, List[float]]:
         """Train the model for specified number of epochs.
 
         Args:
             num_epochs: Number of epochs to train
-            save_freq: Frequency of saving checkpoints
-            early_stopping_patience: Number of epochs to wait before early stopping
 
         Returns:
             Dictionary containing training history
@@ -278,7 +262,9 @@ class ClassificationTrainer:
                 patience_counter += 1
 
             # Periodic checkpointing
-            if save_freq and ((epoch + 1) % save_freq == 0):
+            if self.train_cfg.save_freq and (
+                (epoch + 1) % self.train_cfg.save_freq == 0
+            ):
                 self.save_checkpoint(f"checkpoint_{epoch + 1:03d}.pth")
 
             # Early stopping

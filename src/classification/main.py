@@ -6,13 +6,15 @@ import os
 from pathlib import Path
 
 import albumentations as A
-from albumentations.pytorch import ToTensorV2
 import hydra
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from omegaconf import DictConfig, OmegaConf
 
+from src.common.losses import get_loss_function
+from src.common.optimizers import get_optimizer
+from src.common.schedulers import get_scheduler
+from src.classification.config import ClassificationConfig
 from src.common.augmentations import get_augmentations
 from src.common.model_loader import get_model
 from src.common.logging import setup_logging
@@ -24,9 +26,11 @@ from src.common.utils import (
     plot_training_history,
     plot_confusion_matrix,
 )
+from src.common.exceptions import DataLoaderException
 from sklearn.metrics import confusion_matrix
 
 # Note: real log file will be set inside main() after Hydra changes cwd
+logger = setup_logging(__file__)
 
 
 @hydra.main(
@@ -35,83 +39,35 @@ from sklearn.metrics import confusion_matrix
     config_name="classification/main.yaml",
 )
 def main(cfg: DictConfig) -> None:
-    # ---------------------------------------------------------------------
-    # Logging setup
-    # ---------------------------------------------------------------------
-    # Configure logging into the Hydra run dir
-    log_dir = Path(os.getcwd()) / "logs"
-    setup_logging(str(log_dir / "training.log"))
+    # Load config
+    # aug_cfg = cfg.get("classification").get("augmentations", [])
+    # for aug in aug_cfg:
+    #     print(aug)
+    root_cfg = cfg.classification
+    config = ClassificationConfig.from_dict(root_cfg)
     logging.info("Resolved configuration:\n%s", OmegaConf.to_yaml(cfg, resolve=True))
-
-    # Support both shapes: cfg.model.* or cfg.classification.model.*
-    root_cfg = cfg
-    if not hasattr(cfg, "model") and hasattr(cfg, "classification"):
-        root_cfg = cfg.classification
-
-    # Train/aug nodes may live at root or under classification
-    train_cfg = getattr(root_cfg, "train", None) or getattr(cfg, "train", None)
-    augs_cfg = getattr(root_cfg, "augmentations", None) or getattr(
-        cfg, "augmentations", None
-    )
 
     # ---------------------------------------------------------------------
     # Seed & device
     # ---------------------------------------------------------------------
     # Experiment block optional; default seed=42
-    try:
-        seed_val = int(getattr(getattr(root_cfg, "experiment", {}), "seed", 42))
-    except Exception:
-        seed_val = 42
+    seed_val = 42
     set_seed(seed_val)
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    model, data_preproc = get_model(root_cfg)
+    model, data_preproc = get_model(config.model)
     model.to(device)
 
     # ---------------------------------------------------------------------
     # Augmentations + Preprocessing
     # ---------------------------------------------------------------------
     logging.info("Building augmentation and preprocessing pipelines…")
-    # Compose Albumentations pipeline: augmentations + resize + normalize + ToTensor
-    # Leverage timm's data_config for size and normalization
-    _ = getattr(
-        data_preproc, "transforms", None
-    )  # not used; normalization derived below
-    # Resolve via timm's resolve_data_config instead (encoded inside get_model)
-    # Using typical keys from timm data_config
-    # We can derive from the model's default config via timm again if needed,
-    # but here we just use the prepared normalization values.
-
     # Rebuild using augmentations but avoid duplicate ToTensorV2
-    if augs_cfg is not None:
-        train_augs = get_augmentations(
-            OmegaConf.create({"augmentations": augs_cfg}), append_to_tensor=False
-        )
-    else:
-        train_augs = A.Compose([])
+    train_augs = get_augmentations(config.augmentations, append_to_tensor=False)
 
-    # Determine expected size and norm from the model's transform
-    # Fallbacks
-    try:
-        from timm.data.config import resolve_data_config
+    train_transforms = A.Compose(train_augs.transforms + data_preproc.transforms)
 
-        data_config = resolve_data_config({}, model=model)
-        mean = data_config.get("mean", (0.485, 0.456, 0.406))
-        std = data_config.get("std", (0.229, 0.224, 0.225))
-        h, w = data_config.get("input_size", (3, 224, 224))[1:]
-    except Exception:
-        mean = (0.485, 0.456, 0.406)
-        std = (0.229, 0.224, 0.225)
-        h, w = 224, 224
-
-    train_transforms = A.Compose(
-        list(train_augs.transforms)
-        + [A.Resize(height=h, width=w), A.Normalize(mean=mean, std=std), ToTensorV2()]
-    )
-
-    val_transforms = A.Compose(
-        [A.Resize(height=h, width=w), A.Normalize(mean=mean, std=std), ToTensorV2()]
-    )
+    val_transforms = A.Compose(data_preproc.transforms)
 
     # ---------------------------------------------------------------------
     # Datasets & loaders
@@ -127,19 +83,35 @@ def main(cfg: DictConfig) -> None:
         transforms=val_transforms,
         extensions=root_cfg.data.extensions,
     )
+    try:
+        test_dataset = ClassificationDataset(
+            data_root / root_cfg.data.test_dir,
+            transforms=val_transforms,
+            extensions=root_cfg.data.extensions,
+        )
+    except FileNotFoundError:
+        logger.warning("No test directory found, skipping test dataset")
+        test_dataset = None
 
-    train_loader, val_loader, _ = create_data_loaders(
+    train_loader, val_loader, test_loader = create_data_loaders(
+        config.train,
         train_dataset,
-        val_dataset=val_dataset,
-        batch_size=int(getattr(train_cfg, "batch_size", 32)),
-        num_workers=4,
-        shuffle=True,
+        val_dataset,
+        test_dataset,
     )
-    logging.info(
-        "Datasets and loaders ready. Train samples: %d, Val samples: %d",
-        len(train_dataset),
-        len(val_dataset),
-    )
+
+    if train_loader is None or val_loader is None:
+        raise DataLoaderException(
+            "Cannot continue training without train and val data loaders"
+        )
+    if test_loader is None:
+        logger.warning("No test loader found, skipping final evaluation")
+
+    logging.info("Datasets and loaders ready.")
+    logger.info("\tTrain samples: %d", len(train_dataset))
+    logger.info("\tVal samples: %d", len(val_dataset))
+    if test_dataset is not None:
+        logger.info("\tTest samples: %d", len(test_dataset))
 
     # ---------------------------------------------------------------------
     # Model
@@ -153,86 +125,14 @@ def main(cfg: DictConfig) -> None:
     # Optimizer & scheduler
     # ---------------------------------------------------------------------
     logging.info("Setting up optimizer and scheduler…")
-    # Determine epochs early so we can default scheduler params like T_max
-    num_epochs = int(getattr(train_cfg, "epochs", 100))
-    optim_name = str(getattr(train_cfg, "optimizer", "adam")).lower()
-    if optim_name == "adam":
-        optimizer = optim.Adam(
-            filter(lambda p: p.requires_grad, model.parameters()),
-            lr=float(getattr(train_cfg, "learning_rate", 1e-3)),
-            weight_decay=float(getattr(train_cfg, "weight_decay", 1e-4)),
-        )
-    elif optim_name == "adamw":
-        optimizer = optim.AdamW(
-            filter(lambda p: p.requires_grad, model.parameters()),
-            lr=float(getattr(train_cfg, "learning_rate", 1e-3)),
-            weight_decay=float(getattr(train_cfg, "weight_decay", 1e-4)),
-        )
-    elif optim_name == "sgd":
-        optimizer = optim.SGD(
-            filter(lambda p: p.requires_grad, model.parameters()),
-            lr=float(getattr(train_cfg, "learning_rate", 1e-3)),
-            weight_decay=float(getattr(train_cfg, "weight_decay", 1e-4)),
-            momentum=float(getattr(train_cfg, "momentum", 0.9)),
-            nesterov=True,
-        )
-    else:
-        raise ValueError(f"Unsupported optimizer {optim_name}")
-
-    scheduler = None
-    sched_name = str(getattr(train_cfg, "scheduler", "cosine")).lower()
-    sched_params = dict(getattr(train_cfg, "scheduler_params", {}) or {})
-    if sched_name == "cosine":
-        # Default T_max to num_epochs when stepping per epoch
-        sched_params.setdefault("T_max", num_epochs)
-        sched_params.setdefault("eta_min", 0.0)
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, **sched_params)
-    elif sched_name == "step":
-        # Provide reasonable defaults
-        sched_params.setdefault("step_size", max(1, num_epochs // 3))
-        sched_params.setdefault("gamma", 0.1)
-        scheduler = optim.lr_scheduler.StepLR(optimizer, **sched_params)
-    elif sched_name == "plateau":
-        sched_params.setdefault("patience", 3)
-        sched_params.setdefault("factor", 0.5)
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, **sched_params)
+    optimizer = get_optimizer(config.train.optimizer)
+    scheduler = get_scheduler(config.train.scheduler)
 
     # ---------------------------------------------------------------------
     # Trainer
     # ---------------------------------------------------------------------
     # Loss function
-    loss_name = str(getattr(train_cfg, "loss_function", "cross_entropy")).lower()
-    label_smoothing = float(getattr(train_cfg, "label_smoothing", 0.0))
-
-    if loss_name == "cross_entropy":
-        criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
-    elif loss_name == "focal":
-
-        class FocalLoss(nn.Module):
-            def __init__(self, gamma=2.0, alpha=None, reduction="mean"):
-                super().__init__()
-                self.gamma = gamma
-                self.alpha = alpha
-                self.reduction = reduction
-
-            def forward(self, logits, target):
-                ce = nn.functional.cross_entropy(
-                    logits, target, reduction="none", weight=None
-                )
-                pt = torch.exp(-ce)
-                loss = ((1 - pt) ** self.gamma) * ce
-                if self.reduction == "mean":
-                    return loss.mean()
-                if self.reduction == "sum":
-                    return loss.sum()
-                return loss
-
-        criterion = FocalLoss(
-            gamma=float(getattr(train_cfg, "focal_gamma", 2.0)),
-            alpha=getattr(train_cfg, "focal_alpha", None),
-        )
-    else:
-        raise ValueError(f"Unsupported loss_function {loss_name}")
+    criterion = get_loss_function(config.train.loss_function)
 
     # Pyright sometimes narrows scheduler to ReduceLROnPlateau which is not a subclass of _LRScheduler
     # Our trainer supports both types, so type: ignore on this argument
@@ -296,4 +196,4 @@ def main(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    main()  # type: ignore
+    main()

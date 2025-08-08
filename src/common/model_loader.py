@@ -1,12 +1,14 @@
 """Utility to construct and optionally freeze timm models from Hydra config."""
 
-from typing import Tuple, Any, Iterable
+from typing import Tuple, Iterable
+import albumentations as A
 
 import timm
 from timm.data.config import resolve_data_config
 from timm.data.transforms_factory import create_transform
 import torch.nn as nn
-from omegaconf import DictConfig
+
+from src.classification.config import ModelConfig
 
 
 def _matches_any_prefix(name: str, prefixes: Iterable[str]) -> bool:
@@ -71,22 +73,20 @@ def apply_freezing(
                         module.bias.requires_grad = False
 
 
-def get_model(cfg: DictConfig) -> Tuple[nn.Module, Any]:
+def get_model(cfg: ModelConfig) -> Tuple[nn.Module, A.Compose]:
     """Create a timm model and preprocessing according to cfg.model, apply freezing."""
-    model_cfg = cfg.model
-
     model = timm.create_model(
-        model_cfg.name,
-        pretrained=bool(model_cfg.pretrained),
-        num_classes=int(model_cfg.num_classes),
-        drop_rate=float(model_cfg.dropout),
+        cfg.name,
+        pretrained=bool(cfg.pretrained),
+        num_classes=int(cfg.num_classes),
+        drop_rate=float(cfg.dropout),
     )
 
     # Apply optional freezing controls if present in cfg
-    freeze_backbone = bool(getattr(model_cfg, "freeze_backbone", False))
-    freeze_layers = getattr(model_cfg, "freeze_layers", []) or []
-    unfreeze_layers = getattr(model_cfg, "unfreeze_layers", []) or []
-    partial_bn = bool(getattr(model_cfg, "partial_bn", False))
+    freeze_backbone = bool(cfg.freeze_backbone)
+    freeze_layers = cfg.freeze_layers or []
+    unfreeze_layers = cfg.unfreeze_layers or []
+    partial_bn = bool(cfg.partial_bn)
 
     apply_freezing(
         model,
@@ -97,6 +97,16 @@ def get_model(cfg: DictConfig) -> Tuple[nn.Module, Any]:
     )
 
     data_config = resolve_data_config({}, model=model)
-    preprocessing = create_transform(**data_config)
+    mean = data_config.get("mean", (0.485, 0.456, 0.406))
+    std = data_config.get("std", (0.229, 0.224, 0.225))
+    h, w = data_config.get("input_size", (3, 224, 224))[1:]
+
+    preprocessing = A.Compose(
+        [
+            A.Resize(h, w),
+            A.Normalize(mean=mean, std=std),
+            A.ToTensorV2(),
+        ]
+    )
 
     return model, preprocessing
