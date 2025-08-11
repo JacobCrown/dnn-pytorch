@@ -1,15 +1,13 @@
 """Utility functions for classification tasks."""
 
 import random
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
-import torch
-from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Any
-from torch.utils.data import DataLoader, random_split, Dataset
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
-
+import torch
+from torch.utils.data import DataLoader, Dataset
 
 from src.classification.config import TrainingConfig
 
@@ -73,73 +71,6 @@ def create_data_loaders(
         )
 
     return train_loader, val_loader, test_loader
-
-
-def split_dataset(
-    dataset,
-    train_ratio: float = 0.7,
-    val_ratio: float = 0.15,
-    test_ratio: float = 0.15,
-    seed: int = 42,
-) -> Tuple[torch.utils.data.Subset, torch.utils.data.Subset, torch.utils.data.Subset]:
-    """Split a dataset into train, validation, and test sets.
-
-    Args:
-        dataset: Dataset to split
-        train_ratio: Ratio of training data
-        val_ratio: Ratio of validation data
-        test_ratio: Ratio of test data
-        seed: Random seed for reproducibility
-
-    Returns:
-        Tuple of (train_subset, val_subset, test_subset)
-    """
-    assert abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-6, (
-        "Ratios must sum to 1.0"
-    )
-
-    total_size = len(dataset)
-    train_size = int(train_ratio * total_size)
-    val_size = int(val_ratio * total_size)
-    test_size = total_size - train_size - val_size
-
-    train_subset, val_subset, test_subset = random_split(
-        dataset,
-        [train_size, val_size, test_size],
-        generator=torch.Generator().manual_seed(seed),
-    )
-
-    return train_subset, val_subset, test_subset
-
-
-def calculate_metrics(
-    y_true: List[int], y_pred: List[int], class_names: Optional[List[str]] = None
-) -> Dict[str, Any]:
-    """Calculate classification metrics.
-
-    Args:
-        y_true: True labels
-        y_pred: Predicted labels
-        class_names: Names of the classes
-
-    Returns:
-        Dictionary containing metrics
-    """
-    accuracy = accuracy_score(y_true, y_pred)
-
-    # Classification report
-    report = classification_report(
-        y_true, y_pred, target_names=class_names, output_dict=True
-    )
-
-    # Confusion matrix
-    cm = confusion_matrix(y_true, y_pred)
-
-    return {
-        "accuracy": accuracy,
-        "classification_report": report,
-        "confusion_matrix": cm,
-    }
 
 
 def plot_confusion_matrix(
@@ -220,85 +151,3 @@ def plot_training_history(
         plt.show()
 
     plt.close()
-
-
-def save_class_mapping(class_to_idx: Dict[str, int], save_path: str) -> None:
-    """Save class mapping to a JSON file.
-
-    Args:
-        class_to_idx: Mapping from class names to indices
-        save_path: Path to save the mapping
-    """
-    import json
-
-    with open(save_path, "w") as f:
-        json.dump(class_to_idx, f, indent=2)
-
-
-def load_class_mapping(load_path: str) -> Dict[str, int]:
-    """Load class mapping from a JSON file.
-
-    Args:
-        load_path: Path to load the mapping from
-
-    Returns:
-        Mapping from class names to indices
-    """
-    import json
-
-    with open(load_path, "r") as f:
-        return json.load(f)
-
-
-def get_device() -> torch.device:
-    """Get the best available device.
-
-    Returns:
-        PyTorch device
-    """
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    elif torch.backends.mps.is_available():
-        return torch.device("mps")
-    else:
-        return torch.device("cpu")
-
-
-def count_parameters(model: torch.nn.Module) -> Dict[str, int]:
-    """Count the number of parameters in a model.
-
-    Args:
-        model: PyTorch model
-
-    Returns:
-        Dictionary containing parameter counts
-    """
-    total_params = sum(p.numel() for p in model.parameters())
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-    return {
-        "total": total_params,
-        "trainable": trainable_params,
-        "non_trainable": total_params - trainable_params,
-    }
-
-
-def create_experiment_dir(base_dir: str, experiment_name: str) -> Path:
-    """Create a directory for an experiment.
-
-    Args:
-        base_dir: Base directory for experiments
-        experiment_name: Name of the experiment
-
-    Returns:
-        Path to the experiment directory
-    """
-    experiment_dir = Path(base_dir) / experiment_name
-    experiment_dir.mkdir(parents=True, exist_ok=True)
-
-    # Create subdirectories
-    (experiment_dir / "checkpoints").mkdir(exist_ok=True)
-    (experiment_dir / "logs").mkdir(exist_ok=True)
-    (experiment_dir / "plots").mkdir(exist_ok=True)
-
-    return experiment_dir

@@ -1,30 +1,28 @@
 # Training hyperparameters
 
-epochs: 5
-batch_size: 16
-learning_rate: 0.001
-weight_decay: 0.0001
-num_workers: 4
-pin_memory: true
+epochs: 3
+batch_size: 32
+num_workers: 0
+pin_memory: false
 shuffle: true
 
 optimizer:
-  name: adam  # options: adam, adamw, sgd
+  name: Adam  # options: Adam, AdamW, SGD
   params:
-    momentum: 0.9    # used when optimizer == sgd
+    lr: 0.001
+    weight_decay: 0.0001
 
 # LR scheduler
 scheduler:
-  name: cosine   # options: cosine, step, plateau, none
+  name: CosineAnnealingLR   # options: CosineAnnealingLR, StepLR, ReduceLROnPlateau, None
   params:
     T_max: 100
     eta_min: 0.0001
 
 # Loss function
 loss_function:
-  name: cross_entropy  # options: cross_entropy, focal
-  params:
-    label_smoothing: 0.0          # used by cross_entropy
+  name: CrossEntropyLoss   # options: CrossEntropyLoss, FocalLoss
+  params: {}
 
 # Mixed precision
 use_amp: false

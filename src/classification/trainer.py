@@ -3,16 +3,17 @@
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from matplotlib import pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torch.amp import autocast, GradScaler  # type: ignore[reportMissingImports]
-from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 from sklearn.metrics import confusion_matrix, classification_report
 
+from src.common.utils import plot_confusion_matrix, plot_training_history
 from src.classification.config import TrainingConfig
 
 
@@ -31,8 +32,8 @@ class ClassificationTrainer:
         root_dir: str,
         test_loader: Optional[DataLoader] = None,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
-        save_dir: str = "checkpoints",
-        log_dir: str = "logs",
+        save_dir_name: str = "checkpoints",
+        log_dir_name: str = "logs",
     ):
         """Initialize the trainer.
 
@@ -47,47 +48,77 @@ class ClassificationTrainer:
             save_dir: Directory to save checkpoints
             log_dir: Directory to save logs
         """
-        self.model = model.to(device)
-        self.train_loader = train_loader
-        self.val_loader = val_loader
-        self.device = device
-        self.root_dir = Path(root_dir)
-        self.save_dir = Path(root_dir) / save_dir
-        self.log_dir = Path(root_dir) / log_dir
+        self.model: nn.Module = model.to(device)
+        self.train_loader: DataLoader = train_loader
+        self.val_loader: DataLoader = val_loader
+        self.test_loader: Optional[DataLoader] = test_loader
+        self.device: str = device
+        self.root_dir: Path = Path(root_dir)
+        self.save_dir: Path = Path(root_dir) / save_dir_name
+        self.log_dir: Path = Path(root_dir) / log_dir_name
 
         # Create directories
         self.save_dir.mkdir(parents=True, exist_ok=True)
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
         # Setup loss, optimizer, and scheduler
-        self.criterion = criterion
-        self.optimizer = optimizer
-        self.scheduler = scheduler
+        self.criterion: nn.Module = criterion
+        self.optimizer: optim.Optimizer = optimizer
+        self.scheduler: optim.lr_scheduler._LRScheduler = scheduler
 
         # Training configuration
-        self.resume = train_cfg.resume
-        self.save_freq = train_cfg.save_freq
-        self.save_best_only = train_cfg.save_best_only
-        self.early_stopping_patience = train_cfg.early_stopping_patience
+        self.resume: Optional[str] = train_cfg.resume
+        self.save_freq: int = train_cfg.save_freq
+        self.save_best_only: bool = train_cfg.save_best_only
+        self.early_stopping_patience: Optional[int] = train_cfg.early_stopping_patience
 
         # Mixed precision
-        self.use_amp = train_cfg.use_amp
-        self.grad_clip = train_cfg.gradient_clip
-        self.scaler = GradScaler(device=self.device, enabled=self.use_amp)
+        self.use_amp: bool = train_cfg.use_amp
+        self.grad_clip: Optional[float] = train_cfg.gradient_clip
+        self.scaler: GradScaler = GradScaler(device=self.device, enabled=self.use_amp)
 
         # Setup logging
-        self.writer = SummaryWriter(log_dir)
+        self.writer: SummaryWriter = SummaryWriter(self.log_dir)
 
         # Training state
-        self.current_epoch = 0
-        self.best_val_loss = float("inf")
-        self.best_val_acc = 0.0
+        self.current_epoch: int = 0
+        self.num_epochs: int = train_cfg.epochs
+        self.best_val_loss: float = float("inf")
+        self.best_val_acc: float = 0.0
 
         # Metrics tracking
-        self.train_losses = []
-        self.val_losses = []
-        self.train_accs = []
-        self.val_accs = []
+        self.train_losses: List[float] = []
+        self.val_losses: List[float] = []
+        self.train_accs: List[float] = []
+        self.val_accs: List[float] = []
+
+        # History containing all metrics
+        self.history: Dict[str, List[float]] = {}
+
+        # Resume from checkpoint if specified
+        if self.resume:
+            self._resume_from_checkpoint()
+
+    def _resume_from_checkpoint(self) -> None:
+        """Resume training from the latest checkpoint."""
+        # Look for the latest checkpoint
+        checkpoint_files = list(self.save_dir.glob("*.pth"))
+        if not checkpoint_files:
+            print("No checkpoint files found. Starting from scratch.")
+            return
+
+        # Find the latest checkpoint (prioritize 'last.pth', then most recent)
+        latest_checkpoint = None
+        if (self.save_dir / "last.pth").exists():
+            latest_checkpoint = self.save_dir / "last.pth"
+        else:
+            # Find the most recent checkpoint file
+            latest_checkpoint = max(checkpoint_files, key=lambda x: x.stat().st_mtime)
+
+        if latest_checkpoint:
+            print(f"Resuming from checkpoint: {latest_checkpoint}")
+            self.load_checkpoint(str(latest_checkpoint))
+            print(f"Resumed from epoch {self.current_epoch + 1}")
 
     def train_epoch(self) -> Tuple[float, float]:
         """Train for one epoch.
@@ -102,7 +133,7 @@ class ClassificationTrainer:
 
         pbar = tqdm(self.train_loader, desc=f"Epoch {self.current_epoch + 1}")
 
-        for batch_idx, (data, target) in enumerate(pbar):
+        for _, (data, target) in enumerate(pbar):
             data, target = data.to(self.device), target.to(self.device)
 
             # Handle mixup/cutmix labels
@@ -207,7 +238,6 @@ class ClassificationTrainer:
 
     def train(
         self,
-        num_epochs: int,
     ) -> Dict[str, List[float]]:
         """Train the model for specified number of epochs.
 
@@ -219,7 +249,7 @@ class ClassificationTrainer:
         """
         patience_counter = 0
 
-        for epoch in range(num_epochs):
+        for epoch in range(self.current_epoch, self.num_epochs):
             self.current_epoch = epoch
 
             # Training
@@ -246,7 +276,7 @@ class ClassificationTrainer:
             self.writer.add_scalar("Accuracy/Val", val_acc, epoch)
             self.writer.add_scalar("LR", self.optimizer.param_groups[0]["lr"], epoch)
 
-            print(f"Epoch {epoch + 1}/{num_epochs}:")
+            print(f"Epoch {epoch + 1}/{self.num_epochs}:")
             print(f"  Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}%")
             print(f"  Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%")
 
@@ -262,24 +292,36 @@ class ClassificationTrainer:
                 patience_counter += 1
 
             # Periodic checkpointing
-            if self.train_cfg.save_freq and (
-                (epoch + 1) % self.train_cfg.save_freq == 0
-            ):
+            if self.save_freq and ((epoch + 1) % self.save_freq == 0):
                 self.save_checkpoint(f"checkpoint_{epoch + 1:03d}.pth")
 
             # Early stopping
-            if early_stopping_patience and patience_counter >= early_stopping_patience:
+            if (
+                self.early_stopping_patience
+                and patience_counter >= self.early_stopping_patience
+            ):
                 print(f"Early stopping triggered after {epoch + 1} epochs")
                 break
 
         self.writer.close()
 
-        return {
+        # Evaluate on test set if provided
+        if self.test_loader is not None:
+            print("\n" + "=" * 50)
+            print("FINAL TEST EVALUATION")
+            print("=" * 50)
+            test_metrics = self.evaluate(self.test_loader)
+            print(f"Final Test Accuracy: {test_metrics['test_accuracy']:.2f}%")
+            print("=" * 50)
+
+        self.history = {
             "train_losses": self.train_losses,
             "val_losses": self.val_losses,
             "train_accs": self.train_accs,
             "val_accs": self.val_accs,
         }
+
+        return self.history
 
     def save_checkpoint(self, filename: str, is_best: bool = False) -> None:
         """Save model checkpoint.
@@ -301,7 +343,6 @@ class ClassificationTrainer:
             "val_losses": self.val_losses,
             "train_accs": self.train_accs,
             "val_accs": self.val_accs,
-            "cfg": self.cfg,
         }
 
         filepath = self.save_dir / filename
@@ -404,3 +445,18 @@ class ClassificationTrainer:
                     target = target[0]
                 all_targets.extend(target.cpu().tolist())
         return all_targets, all_predictions
+
+    def visualize_metrics(self) -> None:
+        """Visualize training and validation metrics."""
+        # Training curves (Loss and Accuracy)
+        plot_training_history(
+            self.history, save_path=str(self.log_dir / "training_curves.png")
+        )
+
+        # Confusion matrix on validation set
+        y_true, y_pred = self.predict_labels(self.val_loader)
+        cm = confusion_matrix(y_true, y_pred)
+        class_names = self.val_loader.dataset.get_class_names()
+        plot_confusion_matrix(
+            cm, class_names, save_path=str(self.log_dir / "confusion_matrix.png")
+        )

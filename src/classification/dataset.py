@@ -33,10 +33,12 @@ class ClassificationDataset(Dataset):
         data_root: str,
         transforms: Any,
         extensions: Optional[List[str]] = None,
+        max_samples: Optional[int] = None,
     ):
         self.data_root = Path(data_root)
         self.transforms = transforms
         self.extensions = extensions or [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
+        self.max_samples = max_samples
 
         # Get class names (subdirectory names)
         self.class_names = sorted(
@@ -55,6 +57,8 @@ class ClassificationDataset(Dataset):
             for file_path in class_dir.iterdir():
                 if file_path.suffix.lower() in self.extensions:
                     self.samples.append((str(file_path), class_idx))
+                    if self.max_samples and len(self.samples) >= self.max_samples:
+                        break
 
     def __len__(self) -> int:
         return len(self.samples)

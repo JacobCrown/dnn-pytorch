@@ -17,6 +17,8 @@ data:
   val_dir: "images/val"
   test_dir: null
   extensions: [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
+  # For debugging purposes, optional
+  max_samples: 100
 
 # -----------------------------------------------------------------------------
 # Model definition (timm)

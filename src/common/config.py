@@ -125,7 +125,7 @@ class OptimizerConfig(BaseConfig):
     """Wrapper around torch.optim selection parameters."""
 
     name: str = "Adam"
-    params: Dict[str, Any] = field(default_factory=lambda: {"lr": 1e-4})
+    params: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
