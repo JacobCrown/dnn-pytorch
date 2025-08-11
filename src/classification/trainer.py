@@ -1,24 +1,27 @@
 """Trainer for classification models."""
 
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from matplotlib import pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
-from torch.amp import autocast, GradScaler  # type: ignore[reportMissingImports]
+from torch.amp import autocast  # type: ignore[reportMissingImports]
 from tqdm import tqdm
 from sklearn.metrics import confusion_matrix, classification_report
 
+from src.common.enums import TaskType
+from src.common.config import BaseTrainingConfig
+from src.classification.metrics import ClassificationMetrics
 from src.common.utils import plot_confusion_matrix, plot_training_history
-from src.classification.config import TrainingConfig
+from src.core.trainer import BaseTrainer
 
 
-class ClassificationTrainer:
+class ClassificationTrainer(BaseTrainer):
     """Trainer class for classification models."""
+
+    _TASK_TYPE: TaskType = TaskType.CLASSIFICATION
+    metrics: ClassificationMetrics = ClassificationMetrics()
 
     def __init__(
         self,
@@ -28,97 +31,27 @@ class ClassificationTrainer:
         scheduler: optim.lr_scheduler._LRScheduler,
         train_loader: DataLoader,
         val_loader: DataLoader,
-        train_cfg: TrainingConfig,
+        train_cfg: BaseTrainingConfig,
         root_dir: str,
         test_loader: Optional[DataLoader] = None,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
         save_dir_name: str = "checkpoints",
         log_dir_name: str = "logs",
     ):
-        """Initialize the trainer.
-
-        Args:
-            model: PyTorch model to train
-            train_loader: Training data loader
-            val_loader: Validation data loader (optional)
-            criterion: Loss function
-            optimizer: Optimizer
-            scheduler: Learning rate scheduler (optional)
-            device: Device to train on
-            save_dir: Directory to save checkpoints
-            log_dir: Directory to save logs
-        """
-        self.model: nn.Module = model.to(device)
-        self.train_loader: DataLoader = train_loader
-        self.val_loader: DataLoader = val_loader
-        self.test_loader: Optional[DataLoader] = test_loader
-        self.device: str = device
-        self.root_dir: Path = Path(root_dir)
-        self.save_dir: Path = Path(root_dir) / save_dir_name
-        self.log_dir: Path = Path(root_dir) / log_dir_name
-
-        # Create directories
-        self.save_dir.mkdir(parents=True, exist_ok=True)
-        self.log_dir.mkdir(parents=True, exist_ok=True)
-
-        # Setup loss, optimizer, and scheduler
-        self.criterion: nn.Module = criterion
-        self.optimizer: optim.Optimizer = optimizer
-        self.scheduler: optim.lr_scheduler._LRScheduler = scheduler
-
-        # Training configuration
-        self.resume: Optional[str] = train_cfg.resume
-        self.save_freq: int = train_cfg.save_freq
-        self.save_best_only: bool = train_cfg.save_best_only
-        self.early_stopping_patience: Optional[int] = train_cfg.early_stopping_patience
-
-        # Mixed precision
-        self.use_amp: bool = train_cfg.use_amp
-        self.grad_clip: Optional[float] = train_cfg.gradient_clip
-        self.scaler: GradScaler = GradScaler(device=self.device, enabled=self.use_amp)
-
-        # Setup logging
-        self.writer: SummaryWriter = SummaryWriter(self.log_dir)
-
-        # Training state
-        self.current_epoch: int = 0
-        self.num_epochs: int = train_cfg.epochs
-        self.best_val_loss: float = float("inf")
-        self.best_val_acc: float = 0.0
-
-        # Metrics tracking
-        self.train_losses: List[float] = []
-        self.val_losses: List[float] = []
-        self.train_accs: List[float] = []
-        self.val_accs: List[float] = []
-
-        # History containing all metrics
-        self.history: Dict[str, List[float]] = {}
-
-        # Resume from checkpoint if specified
-        if self.resume:
-            self._resume_from_checkpoint()
-
-    def _resume_from_checkpoint(self) -> None:
-        """Resume training from the latest checkpoint."""
-        # Look for the latest checkpoint
-        checkpoint_files = list(self.save_dir.glob("*.pth"))
-        if not checkpoint_files:
-            print("No checkpoint files found. Starting from scratch.")
-            return
-
-        # Find the latest checkpoint (prioritize 'last.pth', then most recent)
-        latest_checkpoint = None
-        if (self.save_dir / "last.pth").exists():
-            latest_checkpoint = self.save_dir / "last.pth"
-        else:
-            # Find the most recent checkpoint file
-            latest_checkpoint = max(checkpoint_files, key=lambda x: x.stat().st_mtime)
-
-        if latest_checkpoint:
-            print(f"Resuming from checkpoint: {latest_checkpoint}")
-            self.load_checkpoint(str(latest_checkpoint))
-            print(f"Resumed from epoch {self.current_epoch + 1}")
+        super().__init__(
+            model=model,
+            criterion=criterion,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            train_cfg=train_cfg,
+            root_dir=root_dir,
+            test_loader=test_loader,
+            device=device,
+            save_dir_name=save_dir_name,
+            log_dir_name=log_dir_name,
+        )
 
     def train_epoch(self) -> Tuple[float, float]:
         """Train for one epoch.
@@ -247,20 +180,39 @@ class ClassificationTrainer:
         Returns:
             Dictionary containing training history
         """
+        # Check if training is already complete
+        if self.current_epoch >= self.num_epochs:
+            print(
+                f"Training already complete! Current epoch: {self.current_epoch}, Total epochs: {self.num_epochs}"
+            )
+            print(
+                "No training needed. Use --train.epochs to increase the number of epochs if you want to continue training."
+            )
+            return {
+                "train_losses": self.metrics.losses.get("train", []),
+                "val_losses": self.metrics.losses.get("val", []),
+                "train_accuracies": self.metrics.accuracies.get("train", []),
+                "val_accuracies": self.metrics.accuracies.get("val", []),
+            }
+
+        print(
+            f"Starting training from epoch {self.current_epoch + 1} to {self.num_epochs}"
+        )
         patience_counter = 0
 
-        for epoch in range(self.current_epoch, self.num_epochs):
+        # Start from the next epoch after the completed one
+        for epoch in range(self.current_epoch + 1, self.num_epochs):
             self.current_epoch = epoch
 
             # Training
             train_loss, train_acc = self.train_epoch()
-            self.train_losses.append(train_loss)
-            self.train_accs.append(train_acc)
+            self.metrics.losses["train"].append(train_loss)
+            self.metrics.accuracies["train"].append(train_acc)
 
             # Validation
             val_loss, val_acc = self.validate()
-            self.val_losses.append(val_loss)
-            self.val_accs.append(val_acc)
+            self.metrics.losses["val"].append(val_loss)
+            self.metrics.accuracies["val"].append(val_acc)
 
             # Learning rate scheduling
             if self.scheduler is not None:
@@ -291,10 +243,6 @@ class ClassificationTrainer:
             else:
                 patience_counter += 1
 
-            # Periodic checkpointing
-            if self.save_freq and ((epoch + 1) % self.save_freq == 0):
-                self.save_checkpoint(f"checkpoint_{epoch + 1:03d}.pth")
-
             # Early stopping
             if (
                 self.early_stopping_patience
@@ -314,65 +262,12 @@ class ClassificationTrainer:
             print(f"Final Test Accuracy: {test_metrics['test_accuracy']:.2f}%")
             print("=" * 50)
 
-        self.history = {
-            "train_losses": self.train_losses,
-            "val_losses": self.val_losses,
-            "train_accs": self.train_accs,
-            "val_accs": self.val_accs,
+        return {
+            "train_losses": self.metrics.losses.get("train", []),
+            "val_losses": self.metrics.losses.get("val", []),
+            "train_accuracies": self.metrics.accuracies.get("train", []),
+            "val_accuracies": self.metrics.accuracies.get("val", []),
         }
-
-        return self.history
-
-    def save_checkpoint(self, filename: str, is_best: bool = False) -> None:
-        """Save model checkpoint.
-
-        Args:
-            filename: Name of the checkpoint file
-            is_best: Whether this is the best model so far
-        """
-        checkpoint = {
-            "epoch": self.current_epoch,
-            "model_state_dict": self.model.state_dict(),
-            "optimizer_state_dict": self.optimizer.state_dict(),
-            "scheduler_state_dict": self.scheduler.state_dict()
-            if self.scheduler
-            else None,
-            "best_val_loss": self.best_val_loss,
-            "best_val_acc": self.best_val_acc,
-            "train_losses": self.train_losses,
-            "val_losses": self.val_losses,
-            "train_accs": self.train_accs,
-            "val_accs": self.val_accs,
-        }
-
-        filepath = self.save_dir / filename
-        torch.save(checkpoint, filepath)
-
-        if is_best:
-            best_filepath = self.save_dir / "best.pth"
-            torch.save(checkpoint, best_filepath)
-
-    def load_checkpoint(self, filepath: str) -> None:
-        """Load model checkpoint.
-
-        Args:
-            filepath: Path to the checkpoint file
-        """
-        checkpoint = torch.load(filepath, map_location=self.device)
-
-        self.model.load_state_dict(checkpoint["model_state_dict"])
-        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-
-        if self.scheduler and checkpoint["scheduler_state_dict"]:
-            self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
-
-        self.current_epoch = checkpoint["epoch"]
-        self.best_val_loss = checkpoint["best_val_loss"]
-        self.best_val_acc = checkpoint["best_val_acc"]
-        self.train_losses = checkpoint["train_losses"]
-        self.val_losses = checkpoint["val_losses"]
-        self.train_accs = checkpoint["train_accs"]
-        self.val_accs = checkpoint["val_accs"]
 
     def evaluate(self, test_loader: DataLoader) -> Dict[str, float]:
         """Evaluate the model on test data.
@@ -450,7 +345,7 @@ class ClassificationTrainer:
         """Visualize training and validation metrics."""
         # Training curves (Loss and Accuracy)
         plot_training_history(
-            self.history, save_path=str(self.log_dir / "training_curves.png")
+            self.metrics, save_path=str(self.log_dir / "training_curves.png")
         )
 
         # Confusion matrix on validation set

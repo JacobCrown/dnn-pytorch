@@ -11,6 +11,7 @@ from typing import (
     Any,
     Dict,
     List,
+    Optional,
     Type,
     TypeVar,
     Union,
@@ -142,3 +143,51 @@ class LossFunctionConfig(BaseConfig):
 
     name: str = "cross_entropy"
     params: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class BaseDataConfig(BaseConfig):
+    """Configuration for data loading and preprocessing."""
+
+    root: str = "data"
+    train_dir: str = "train"
+    val_dir: Optional[str] = None
+    test_dir: Optional[str] = None
+    max_samples: Optional[int] = None
+
+    # Supported image extensions
+    extensions: List[str] = field(
+        default_factory=lambda: [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
+    )
+
+
+@dataclass
+class BaseTrainingConfig(BaseConfig):
+    """Configuration for training."""
+
+    epochs: int = 100
+    batch_size: int = 32
+    num_workers: int = 4
+    pin_memory: bool = True
+    shuffle: bool = True
+
+    # Optimizer
+    optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
+
+    # Scheduler
+    scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
+
+    # Loss function
+    loss_function: LossFunctionConfig = field(default_factory=LossFunctionConfig)
+
+    # Early stopping
+    early_stopping_patience: Optional[int] = 10
+
+    # Resume from checkpoint
+    resume: Optional[str] = None
+
+    # Mixed precision
+    use_amp: bool = False
+
+    # Gradient clipping
+    gradient_clip: Optional[float] = None

@@ -148,10 +148,12 @@ def main(cfg: DictConfig) -> None:
     # ---------------------------------------------------------------------
     # Resume from checkpoint if provided
     # ---------------------------------------------------------------------
-    resume_path = config.train.resume
-    if resume_path:
-        logging.info("Resuming training from %s", resume_path)
-        trainer.load_checkpoint(resume_path)
+    # Note: The BaseTrainer automatically handles resuming from checkpoints
+    # when train_cfg.resume is True, so no additional loading is needed here.
+    # resume_path = config.train.resume
+    # if resume_path:
+    #     logging.info("Resuming training from %s", resume_path)
+    #     trainer.load_checkpoint(resume_path)
 
     # ---------------------------------------------------------------------
     # Train

@@ -12,9 +12,9 @@ The module includes:
 from .dataset import ClassificationDataset
 from .trainer import ClassificationTrainer
 from .config import (
-    ModelConfig,
-    DataConfig,
-    TrainingConfig,
+    ClassificationModelConfig,
+    BaseDataConfig,
+    BaseTrainingConfig,
     ClassificationConfig,
 )
 from ..common import utils as common_utils
@@ -25,9 +25,9 @@ __all__ = [
     # Trainer
     "ClassificationTrainer",
     # Config
-    "ModelConfig",
-    "DataConfig",
-    "TrainingConfig",
+    "ClassificationModelConfig",
+    "BaseDataConfig",
+    "BaseTrainingConfig",
     "ClassificationConfig",
     # Common utils module (namespaced)
     "common_utils",

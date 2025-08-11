@@ -1,7 +1,7 @@
 """Utility functions for classification tasks."""
 
 import random
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,7 +9,9 @@ import seaborn as sns
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from src.classification.config import TrainingConfig
+from src.classification.metrics import ClassificationMetrics
+from src.classification.config import BaseTrainingConfig
+from src.common.metrics import BaseMetrics
 
 
 def set_seed(seed: int = 42) -> None:
@@ -26,7 +28,7 @@ def set_seed(seed: int = 42) -> None:
 
 
 def create_data_loaders(
-    config: TrainingConfig,
+    config: BaseTrainingConfig,
     train_dataset: Dataset,
     val_dataset: Optional[Dataset] = None,
     test_dataset: Optional[Dataset] = None,
@@ -110,7 +112,7 @@ def plot_confusion_matrix(
 
 
 def plot_training_history(
-    history: Dict[str, List[float]],
+    metrics: BaseMetrics,
     save_path: Optional[str] = None,
     figsize: Tuple[int, int] = (12, 5),
 ) -> None:
@@ -124,9 +126,8 @@ def plot_training_history(
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
 
     # Plot loss
-    if "train_losses" in history and "val_losses" in history:
-        ax1.plot(history["train_losses"], label="Train Loss")
-        ax1.plot(history["val_losses"], label="Val Loss")
+    for key, value in metrics.losses.items():
+        ax1.plot(value, label=f"{key} Loss")
         ax1.set_title("Loss")
         ax1.set_xlabel("Epoch")
         ax1.set_ylabel("Loss")
@@ -134,14 +135,14 @@ def plot_training_history(
         ax1.grid(True)
 
     # Plot accuracy
-    if "train_accs" in history and "val_accs" in history:
-        ax2.plot(history["train_accs"], label="Train Acc")
-        ax2.plot(history["val_accs"], label="Val Acc")
-        ax2.set_title("Accuracy")
-        ax2.set_xlabel("Epoch")
-        ax2.set_ylabel("Accuracy (%)")
-        ax2.legend()
-        ax2.grid(True)
+    if isinstance(metrics, ClassificationMetrics):
+        for key, value in metrics.accuracies.items():
+            ax2.plot(value, label=f"{key} Acc")
+            ax2.set_title("Accuracy")
+            ax2.set_xlabel("Epoch")
+            ax2.set_ylabel("Accuracy (%)")
+            ax2.legend()
+            ax2.grid(True)
 
     plt.tight_layout()
 

@@ -8,7 +8,7 @@ from timm.data.config import resolve_data_config
 from timm.data.transforms_factory import create_transform
 import torch.nn as nn
 
-from src.classification.config import ModelConfig
+from src.classification.config import ClassificationModelConfig
 
 
 def _matches_any_prefix(name: str, prefixes: Iterable[str]) -> bool:
@@ -73,7 +73,7 @@ def apply_freezing(
                         module.bias.requires_grad = False
 
 
-def get_model(cfg: ModelConfig) -> Tuple[nn.Module, A.Compose]:
+def get_model(cfg: ClassificationModelConfig) -> Tuple[nn.Module, A.Compose]:
     """Create a timm model and preprocessing according to cfg.model, apply freezing."""
     model = timm.create_model(
         cfg.name,
