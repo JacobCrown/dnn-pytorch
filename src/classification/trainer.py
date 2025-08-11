@@ -171,7 +171,7 @@ class ClassificationTrainer(BaseTrainer):
 
     def train(
         self,
-    ) -> Dict[str, List[float]]:
+    ) -> None:
         """Train the model for specified number of epochs.
 
         Args:
@@ -180,28 +180,9 @@ class ClassificationTrainer(BaseTrainer):
         Returns:
             Dictionary containing training history
         """
-        # Check if training is already complete
-        if self.current_epoch >= self.num_epochs:
-            print(
-                f"Training already complete! Current epoch: {self.current_epoch}, Total epochs: {self.num_epochs}"
-            )
-            print(
-                "No training needed. Use --train.epochs to increase the number of epochs if you want to continue training."
-            )
-            return {
-                "train_losses": self.metrics.losses.get("train", []),
-                "val_losses": self.metrics.losses.get("val", []),
-                "train_accuracies": self.metrics.accuracies.get("train", []),
-                "val_accuracies": self.metrics.accuracies.get("val", []),
-            }
-
-        print(
-            f"Starting training from epoch {self.current_epoch + 1} to {self.num_epochs}"
-        )
         patience_counter = 0
 
-        # Start from the next epoch after the completed one
-        for epoch in range(self.current_epoch + 1, self.num_epochs):
+        for epoch in range(self.current_epoch, self.num_epochs):
             self.current_epoch = epoch
 
             # Training
@@ -261,13 +242,6 @@ class ClassificationTrainer(BaseTrainer):
             test_metrics = self.evaluate(self.test_loader)
             print(f"Final Test Accuracy: {test_metrics['test_accuracy']:.2f}%")
             print("=" * 50)
-
-        return {
-            "train_losses": self.metrics.losses.get("train", []),
-            "val_losses": self.metrics.losses.get("val", []),
-            "train_accuracies": self.metrics.accuracies.get("train", []),
-            "val_accuracies": self.metrics.accuracies.get("val", []),
-        }
 
     def evaluate(self, test_loader: DataLoader) -> Dict[str, float]:
         """Evaluate the model on test data.

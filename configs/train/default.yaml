@@ -30,10 +30,8 @@ use_amp: false
 # Gradient clipping (null disables)
 gradient_clip: null
 
-# Checkpointing
-save_freq: 1           # save checkpoint every N epochs (checkpoint_XXX.pth)
-save_best_only: true   # also track and save best model by validation accuracy
-resume: null           # path to checkpoint to resume from
+# Resume from checkpoint
+resume: false
 
 # Early stopping
 early_stopping_patience: 10
