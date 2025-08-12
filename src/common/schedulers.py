@@ -1,5 +1,6 @@
-from src.common.config import SchedulerConfig
 import torch.optim.lr_scheduler
+
+from src.common.config import SchedulerConfig
 
 
 def get_scheduler(

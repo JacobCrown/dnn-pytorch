@@ -1,9 +1,9 @@
-from typing import List, Tuple, Optional, Dict, Any
+from typing import Any, List, Optional, Tuple
 
 import torch
 
-from src.core.dataset import BaseDataset
 from src.common.enums import TaskType
+from src.core.dataset import BaseDataset
 
 
 class ClassificationDataset(BaseDataset):

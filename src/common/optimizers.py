@@ -1,6 +1,8 @@
-from src.common.config import OptimizerConfig
-import torch
 from typing import Iterable
+
+import torch
+
+from src.common.config import OptimizerConfig
 
 
 def get_optimizer(

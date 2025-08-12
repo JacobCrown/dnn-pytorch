@@ -1,5 +1,6 @@
-from src.common.config import LossFunctionConfig
 import torch.nn as nn
+
+from src.common.config import LossFunctionConfig
 
 
 def get_loss_function(config: LossFunctionConfig) -> nn.Module:

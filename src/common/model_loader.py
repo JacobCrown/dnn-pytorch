@@ -1,11 +1,11 @@
 """Utility to construct and optionally freeze timm models from Hydra config."""
 
-from typing import Tuple, Iterable
-import albumentations as A
+from typing import Iterable, Tuple
 
+import albumentations as A
 import timm
-from timm.data.config import resolve_data_config
 import torch.nn as nn
+from timm.data.config import resolve_data_config
 
 from src.classification.config import ClassificationModelConfig
 

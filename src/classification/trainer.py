@@ -5,14 +5,14 @@ from typing import Dict, List, Optional, Tuple
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from sklearn.metrics import classification_report, confusion_matrix
 from torch.amp import autocast  # type: ignore[reportMissingImports]
+from torch.utils.data import DataLoader
 from tqdm import tqdm
-from sklearn.metrics import confusion_matrix, classification_report
 
-from src.common.enums import TaskType
-from src.common.config import BaseTrainingConfig
 from src.classification.metrics import ClassificationMetrics
+from src.common.config import BaseTrainingConfig
+from src.common.enums import TaskType
 from src.common.utils import plot_confusion_matrix, plot_training_history
 from src.core.trainer import BaseTrainer
 

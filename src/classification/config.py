@@ -6,8 +6,8 @@ from typing import List
 from src.common.config import (
     AugmentationConfig,
     BaseConfig,
-    BaseTrainingConfig,
     BaseDataConfig,
+    BaseTrainingConfig,
 )
 
 

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Optional
 from pathlib import Path
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -10,8 +10,8 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from src.common.config import BaseTrainingConfig
-from src.common.metrics import BaseMetrics
 from src.common.enums import TaskType
+from src.common.metrics import BaseMetrics
 
 
 class BaseTrainer(ABC):
@@ -214,15 +214,15 @@ class BaseTrainer(ABC):
             "epoch": self.current_epoch,
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
-            "scheduler_state_dict": self.scheduler.state_dict()
-            if self.scheduler
-            else None,
+            "scheduler_state_dict": (
+                self.scheduler.state_dict() if self.scheduler else None
+            ),
             "best_val_loss": self.best_val_loss,
             "best_val_acc": self.best_val_acc,
             # Save metrics data as a dict instead of the object
-            "metrics_data": self.metrics.to_dict()
-            if hasattr(self.metrics, "to_dict")
-            else {},
+            "metrics_data": (
+                self.metrics.to_dict() if hasattr(self.metrics, "to_dict") else {}
+            ),
         }
 
         filepath = self.save_dir / filename

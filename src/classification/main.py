@@ -8,20 +8,17 @@ import hydra
 import torch
 from omegaconf import DictConfig, OmegaConf
 
-from src.common.losses import get_loss_function
-from src.common.optimizers import get_optimizer
-from src.common.schedulers import get_scheduler
 from src.classification.config import ClassificationConfig
-from src.common.augmentations import get_augmentations
-from src.common.model_loader import get_model
-from src.common.logging import setup_logging
 from src.classification.dataset import ClassificationDataset
 from src.classification.trainer import ClassificationTrainer
-from src.common.utils import (
-    create_data_loaders,
-    set_seed,
-)
+from src.common.augmentations import get_augmentations
 from src.common.exceptions import DataLoaderException
+from src.common.logging import setup_logging
+from src.common.losses import get_loss_function
+from src.common.model_loader import get_model
+from src.common.optimizers import get_optimizer
+from src.common.schedulers import get_scheduler
+from src.common.utils import create_data_loaders, set_seed
 
 # Note: real log file will be set inside main() after Hydra changes cwd
 logger = setup_logging(__file__)
