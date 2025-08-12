@@ -45,3 +45,4 @@ packages = ["src"]
 
 [project.scripts]
 dnn-train-classification = "src.classification.main:main"
+dnn-train-segmentation = "src.segmentation.main:main"

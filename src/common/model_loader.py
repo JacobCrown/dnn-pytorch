@@ -5,7 +5,6 @@ import albumentations as A
 
 import timm
 from timm.data.config import resolve_data_config
-from timm.data.transforms_factory import create_transform
 import torch.nn as nn
 
 from src.classification.config import ClassificationModelConfig
