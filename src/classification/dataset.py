@@ -1,6 +1,8 @@
-from typing import Any, List, Optional, Tuple
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 import torch
+import albumentations as A
 
 from src.common.enums import TaskType
 from src.core.dataset import BaseDataset
@@ -29,9 +31,9 @@ class ClassificationDataset(BaseDataset):
 
     def __init__(
         self,
-        data_root: str,
-        transforms: Any,
-        extensions: Optional[List[str]] = None,
+        data_root: Path,
+        transforms: A.Compose,
+        extensions: List[str],
         max_samples: Optional[int] = None,
     ):
         super().__init__(
@@ -77,3 +79,11 @@ class ClassificationDataset(BaseDataset):
         # Use the base class image loading method
         image = self._load_image(file_path)
         return image, label
+
+    def get_class_names(self) -> List[str]:
+        """Get the list of class names."""
+        return self.class_names
+
+    def get_class_to_idx(self) -> Dict[str, int]:
+        """Get the mapping from class names to indices."""
+        return self.class_to_idx

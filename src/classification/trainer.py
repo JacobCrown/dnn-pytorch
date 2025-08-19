@@ -217,8 +217,8 @@ class ClassificationTrainer(BaseTrainer):
             self.save_checkpoint("last.pth")
 
             # Save best model when validation metric improves
-            if val_acc > self.best_val_acc:
-                self.best_val_acc = val_acc
+            if val_acc > self.best_val_metric:
+                self.best_val_metric = val_acc
                 self.save_checkpoint("best.pth", is_best=True)
                 patience_counter = 0
             else:

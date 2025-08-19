@@ -9,9 +9,10 @@ import seaborn as sns
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from src.classification.config import BaseTrainingConfig
 from src.classification.metrics import ClassificationMetrics
-from src.common.metrics import BaseMetrics
+from src.segmentation.metrics import SegmentationMetrics
+from src.common.config import BaseTrainingConfig
+from src.core.metrics import BaseMetrics
 
 
 def set_seed(seed: int = 42) -> None:
@@ -141,6 +142,15 @@ def plot_training_history(
             ax2.set_title("Accuracy")
             ax2.set_xlabel("Epoch")
             ax2.set_ylabel("Accuracy (%)")
+            ax2.legend()
+            ax2.grid(True)
+
+    if isinstance(metrics, SegmentationMetrics):
+        for key, value in metrics.ious.items():
+            ax2.plot(value, label=f"{key} IoU")
+            ax2.set_title("IoU")
+            ax2.set_xlabel("Epoch")
+            ax2.set_ylabel("IoU")
             ax2.legend()
             ax2.grid(True)
 

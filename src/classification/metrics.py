@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List
 
 from src.common.enums import TaskType
-from src.common.metrics import BaseMetrics
+from src.core.metrics import BaseMetrics
 
 
 @dataclass

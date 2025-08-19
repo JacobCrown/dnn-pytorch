@@ -11,7 +11,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from src.common.config import BaseTrainingConfig
 from src.common.enums import TaskType
-from src.common.metrics import BaseMetrics
+from src.core.metrics import BaseMetrics
 
 
 class BaseTrainer(ABC):
@@ -85,7 +85,7 @@ class BaseTrainer(ABC):
 
         # Metrics tracking
         self.best_val_loss: float = float("inf")
-        self.best_val_acc: float = 0.0
+        self.best_val_metric: float = 0.0  # Accuracy in case of classification
 
         # Resume from checkpoint if specified
         if self.resume:
@@ -127,7 +127,7 @@ class BaseTrainer(ABC):
             raise ValueError("Metrics are not defined")
         if self.best_val_loss is None:
             raise ValueError("Best validation loss is not defined")
-        if self.best_val_acc is None:
+        if self.best_val_metric is None:
             raise ValueError("Best validation accuracy is not defined")
 
     def _validate_checkpoint(self, filepath: Path) -> bool:
@@ -218,7 +218,7 @@ class BaseTrainer(ABC):
                 self.scheduler.state_dict() if self.scheduler else None
             ),
             "best_val_loss": self.best_val_loss,
-            "best_val_acc": self.best_val_acc,
+            "best_val_metric": self.best_val_metric,
             # Save metrics data as a dict instead of the object
             "metrics_data": (
                 self.metrics.to_dict() if hasattr(self.metrics, "to_dict") else {}
@@ -278,8 +278,8 @@ class BaseTrainer(ABC):
         # Restore best values
         if "best_val_loss" in checkpoint:
             self.best_val_loss = checkpoint["best_val_loss"]
-        if "best_val_acc" in checkpoint:
-            self.best_val_acc = checkpoint["best_val_acc"]
+        if "best_val_metric" in checkpoint:
+            self.best_val_metric = checkpoint["best_val_metric"]
 
         # Restore metrics data if available
         if "metrics_data" in checkpoint and hasattr(self.metrics, "from_dict"):

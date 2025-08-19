@@ -18,7 +18,8 @@ from src.common.losses import get_loss_function
 from src.common.model_loader import get_model
 from src.common.optimizers import get_optimizer
 from src.common.schedulers import get_scheduler
-from src.common.utils import create_data_loaders, set_seed
+from src.common.utils import set_seed
+from src.common.data_utils import create_data_loaders
 
 # Note: real log file will be set inside main() after Hydra changes cwd
 logger = setup_logging(__file__)
@@ -39,8 +40,7 @@ def main(cfg: DictConfig) -> None:
     # Seed & device
     # ---------------------------------------------------------------------
     # Experiment block optional; default seed=42
-    seed_val = 42
-    set_seed(seed_val)
+    set_seed()
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     model, data_preproc = get_model(config.model)
