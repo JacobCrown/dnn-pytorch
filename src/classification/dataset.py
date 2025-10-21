@@ -85,7 +85,10 @@ class ClassificationDataset(BaseDataset):
 
         # Use the base class image loading method
         image = self._load_image(file_path)
-        return image, label
+        if self.transforms is not None:
+            transformed = self.transforms(image=image)
+            image_t: torch.Tensor = transformed["image"]
+        return image_t, label
 
     def get_class_names(self) -> List[str]:
         """Get the list of class names."""

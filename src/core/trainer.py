@@ -86,10 +86,6 @@ class BaseTrainer(ABC):
         self.current_epoch: int = 0
         self.num_epochs: int = train_cfg.epochs
 
-        # Metrics tracking
-        self.best_val_loss: float = float("inf")
-        self.best_val_metric: float = 0.0  # Accuracy in case of classification
-
         # Resume from checkpoint if specified
         if self.resume:
             self._resume_from_checkpoint()
@@ -128,10 +124,6 @@ class BaseTrainer(ABC):
             raise ValueError("Number of epochs is not defined")
         if self.metrics is None:
             raise ValueError("Metrics are not defined")
-        if self.best_val_loss is None:
-            raise ValueError("Best validation loss is not defined")
-        if self.best_val_metric is None:
-            raise ValueError("Best validation accuracy is not defined")
 
     def _validate_checkpoint(self, filepath: Path) -> bool:
         """Validate if a checkpoint file is valid and can be loaded.
@@ -165,7 +157,7 @@ class BaseTrainer(ABC):
         # Look for the latest checkpoint
         checkpoint_files = list(self.checkpoints_dir.glob("*.pth"))
         if not checkpoint_files:
-            print("No checkpoint files found. Starting from scratch.")
+            logger.info("No checkpoint files found. Starting from scratch.")
             return
 
         # Find the latest checkpoint (prioritize 'last.pth', then most recent)
@@ -186,12 +178,6 @@ class BaseTrainer(ABC):
                 logger.warning(
                     f"Checkpoint {latest_checkpoint} is corrupted. Starting from scratch."
                 )
-                # Optionally remove corrupted checkpoint
-                try:
-                    latest_checkpoint.unlink()
-                    print(f"Removed corrupted checkpoint: {latest_checkpoint}")
-                except Exception as e:
-                    print(f"Could not remove corrupted checkpoint: {e}")
 
     @abstractmethod
     def train_epoch(self):
@@ -205,12 +191,11 @@ class BaseTrainer(ABC):
     def validate(self):
         pass
 
-    def save_checkpoint(self, filename: str, is_best: bool = False) -> None:
+    def save_checkpoint(self, filename: str) -> None:
         """Save model checkpoint.
 
         Args:
             filename: Name of the checkpoint file
-            is_best: Whether this is the best model so far
         """
         # Save only essential data, not the entire metrics object
         checkpoint = {
@@ -220,8 +205,6 @@ class BaseTrainer(ABC):
             "scheduler_state_dict": (
                 self.scheduler.state_dict() if self.scheduler else None
             ),
-            "best_val_loss": self.best_val_loss,
-            "best_val_metric": self.best_val_metric,
             # Save metrics data as a dict instead of the object
             "metrics_data": (
                 self.metrics.to_dict() if hasattr(self.metrics, "to_dict") else {}
@@ -230,10 +213,6 @@ class BaseTrainer(ABC):
 
         filepath = self.checkpoints_dir / filename
         torch.save(checkpoint, filepath)
-
-        if is_best:
-            best_filepath = self.checkpoints_dir / "best.pth"
-            torch.save(checkpoint, best_filepath)
 
     def load_checkpoint(self, filepath: str) -> None:
         """Load model checkpoint.
@@ -247,21 +226,21 @@ class BaseTrainer(ABC):
                 filepath, map_location=self.device, weights_only=False
             )
         except Exception as e:
-            print(f"Error loading checkpoint {filepath}: {e}")
-            print("Starting training from scratch...")
+            logger.error(f"Error loading checkpoint {filepath}: {e}")
+            logger.info("Starting training from scratch...")
             return
 
         # Load model state
         if "model_state_dict" in checkpoint:
             self.model.load_state_dict(checkpoint["model_state_dict"])
         else:
-            print("Warning: No model state dict found in checkpoint")
+            logger.warning("Warning: No model state dict found in checkpoint")
 
         # Load optimizer state
         if "optimizer_state_dict" in checkpoint:
             self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         else:
-            print("Warning: No optimizer state dict found in checkpoint")
+            logger.warning("Warning: No optimizer state dict found in checkpoint")
 
         # Load scheduler state
         if (
@@ -275,30 +254,15 @@ class BaseTrainer(ABC):
         if "epoch" in checkpoint:
             self.current_epoch = checkpoint["epoch"]
         else:
-            print("Warning: No epoch information found in checkpoint")
+            logger.warning("Warning: No epoch information found in checkpoint")
             self.current_epoch = 0
-
-        # Restore best values
-        if "best_val_loss" in checkpoint:
-            self.best_val_loss = checkpoint["best_val_loss"]
-        if "best_val_metric" in checkpoint:
-            self.best_val_metric = checkpoint["best_val_metric"]
 
         # Restore metrics data if available
         if "metrics_data" in checkpoint and hasattr(self.metrics, "from_dict"):
             try:
                 self.metrics.from_dict(checkpoint["metrics_data"])
             except Exception as e:
-                print(f"Warning: Could not restore metrics from checkpoint: {e}")
-        elif "metrics" in checkpoint:
-            # Fallback for old checkpoint format
-            try:
-                self.metrics = checkpoint["metrics"]
-            except Exception as e:
-                print(
-                    f"Warning: Could not restore metrics from old checkpoint format: {e}"
-                )
-                print("Initializing fresh metrics...")
+                logger.warning(f"Warning: Could not restore metrics from checkpoint: {e}")
 
     @abstractmethod
     def evaluate(self):

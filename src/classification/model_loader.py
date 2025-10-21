@@ -6,6 +6,7 @@ import logging
 import albumentations as A
 import timm
 import torch.nn as nn
+from albumentations.pytorch import ToTensorV2
 from timm.data.config import resolve_data_config
 
 from src.classification.config import ClassificationModelConfig
@@ -116,7 +117,7 @@ def get_model(cfg: ClassificationModelConfig) -> Tuple[nn.Module, A.Compose]:
         [
             A.Resize(height, width),
             A.Normalize(mean=mean, std=std),
-            A.ToTensorV2(),
+            ToTensorV2(),
         ]
     )
 

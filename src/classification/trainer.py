@@ -1,5 +1,6 @@
 """Trainer for classification models."""
 
+import logging
 from typing import Dict, List, Optional, Tuple
 
 import torch
@@ -17,6 +18,7 @@ from src.common.enums import TaskType
 from src.core.trainer import BaseTrainer
 
 
+logger = logging.getLogger(__name__)
 class ClassificationTrainer(BaseTrainer):
     """Trainer class for classification models."""
 
@@ -147,6 +149,7 @@ class ClassificationTrainer(BaseTrainer):
     ) -> None:
         """Train the model."""
         patience_counter = 0
+        best_val_loss = float("inf")
 
         for epoch in range(self.current_epoch, self.num_epochs):
             self.current_epoch = epoch
@@ -175,17 +178,17 @@ class ClassificationTrainer(BaseTrainer):
             self.writer.add_scalar("Accuracy/Val", val_acc, epoch)
             self.writer.add_scalar("LR", self.optimizer.param_groups[0]["lr"], epoch)
 
-            print(f"Epoch {epoch + 1}/{self.num_epochs}:")
-            print(f"  Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}%")
-            print(f"  Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%")
+            logger.info(f"Epoch {epoch + 1}/{self.num_epochs}:")
+            logger.info(f"  Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}%")
+            logger.info(f"  Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%")
 
             # Always save last checkpoint
             self.save_checkpoint("last.pth")
 
             # Save best model when validation metric improves
-            if val_acc > self.best_val_metric:
-                self.best_val_metric = val_acc
-                self.save_checkpoint("best.pth", is_best=True)
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                self.save_checkpoint("best.pth")
                 patience_counter = 0
             else:
                 patience_counter += 1
@@ -195,19 +198,19 @@ class ClassificationTrainer(BaseTrainer):
                 self.early_stopping_patience
                 and patience_counter >= self.early_stopping_patience
             ):
-                print(f"Early stopping triggered after {epoch + 1} epochs")
+                logger.info(f"Early stopping triggered after {epoch + 1} epochs")
                 break
 
         self.writer.close()
 
         # Evaluate on test set if provided
         if self.test_loader is not None:
-            print("\n" + "=" * 50)
-            print("FINAL TEST EVALUATION")
-            print("=" * 50)
+            logger.info("\n" + "=" * 50)
+            logger.info("FINAL TEST EVALUATION")
+            logger.info("=" * 50)
             test_metrics = self.evaluate(self.test_loader)
-            print(f"Final Test Accuracy: {test_metrics['test_accuracy']:.2f}%")
-            print("=" * 50)
+            logger.info(f"Final Test Accuracy: {test_metrics['test_accuracy']:.2f}%")
+            logger.info("=" * 50)
 
     def evaluate(self, test_loader: DataLoader) -> Dict[str, float]:
         """Evaluate the model on test data.
@@ -259,10 +262,10 @@ class ClassificationTrainer(BaseTrainer):
             "classification_report": report,
         }
 
-        print("Test Results:")
-        print(f"  Loss: {avg_loss:.4f}")
-        print(f"  Accuracy: {accuracy:.2f}%")
-        print(f"  Correct: {correct}/{total}")
+        logger.info("Test Results:")
+        logger.info(f"  Loss: {avg_loss:.4f}")
+        logger.info(f"  Accuracy: {accuracy:.2f}%")
+        logger.info(f"  Correct: {correct}/{total}")
 
         return metrics
 
@@ -294,12 +297,12 @@ class ClassificationTrainer(BaseTrainer):
         """
         vis_save_dir = self.root_dir / "visualizations"
         
-        print("\n" + "=" * 50)
-        print("GENERATING VISUALIZATIONS")
-        print("=" * 50)
+        logger.info("\n" + "=" * 50)
+        logger.info("GENERATING VISUALIZATIONS")
+        logger.info("=" * 50)
         
         # Visualize example images
-        print("\n1. Visualizing example images...")
+        logger.info("\n1. Visualizing example images...")
         self.visualizer.visualize_example_images(
             data_loader=self.train_loader,
             save_dir=vis_save_dir,
@@ -307,14 +310,14 @@ class ClassificationTrainer(BaseTrainer):
         )
         
         # Visualize data distribution
-        print("\n2. Visualizing data distribution...")
+        logger.info("\n2. Visualizing data distribution...")
         self.visualizer.visualize_data_distribution(
             data_loader=self.train_loader,
             save_dir=vis_save_dir,
         )
         
         # Visualize predictions (use test set if available, otherwise validation set)
-        print("\n3. Visualizing predictions...")
+        logger.info("\n3. Visualizing predictions...")
         prediction_loader = self.test_loader if self.test_loader is not None else self.val_loader
         self.visualizer.visualize_predictions(
             data_loader=prediction_loader,
@@ -326,7 +329,7 @@ class ClassificationTrainer(BaseTrainer):
         )
         
         # Visualize metrics
-        print("\n4. Visualizing training metrics...")
+        logger.info("\n4. Visualizing training metrics...")
         self.visualizer.visualize_metrics(
             metrics=self.metrics,
             save_dir=vis_save_dir,
@@ -336,6 +339,6 @@ class ClassificationTrainer(BaseTrainer):
             use_amp=self.use_amp,
         )
         
-        print("\n" + "=" * 50)
-        print(f"All visualizations saved to: {vis_save_dir}")
-        print("=" * 50)
+        logger.info("\n" + "=" * 50)
+        logger.info(f"All visualizations saved to: {vis_save_dir}")
+        logger.info("=" * 50)

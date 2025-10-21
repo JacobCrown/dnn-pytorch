@@ -1,11 +1,9 @@
 """Base dataset class for different task types."""
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, List, Optional, Union
 
 import cv2
-import torch
-from albumentations.pytorch import ToTensorV2
 from torch.utils.data import Dataset
 import numpy as np
 
@@ -56,14 +54,15 @@ class BaseDataset(Dataset):
         """Build the list of samples. Override in subclasses for specific logic."""
         raise NotImplementedError("Subclasses must implement _build_samples")
 
-    def _load_image(self, file_path: Union[str, Path]) -> torch.Tensor:
+    @staticmethod
+    def _load_image(file_path: Union[str, Path]) -> np.ndarray:
         """Load and preprocess an image.
 
         Args:
             file_path: Path to the image file
 
         Returns:
-            Preprocessed image tensor
+            Image as numpy array
         """
         try:
             # Read image with OpenCV and convert BGR to RGB
@@ -79,19 +78,6 @@ class BaseDataset(Dataset):
                     image = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
                 else:
                     raise ValueError(f"Invalid image shape: {image.shape}")
-
-            # Apply transforms (expects HWC numpy)
-            if self.transforms:
-                transformed = self.transforms(image=image)
-                # Handle both dict and direct tensor outputs
-                if isinstance(transformed, dict):
-                    image = transformed["image"]
-                else:
-                    image = transformed
-
-            # Ensure output is a torch.Tensor
-            if not isinstance(image, torch.Tensor):
-                image = ToTensorV2()(image=image)["image"]
 
             return image
 
