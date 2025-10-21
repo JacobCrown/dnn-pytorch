@@ -15,14 +15,17 @@ from src.common.config import (
 class ClassificationModelConfig(BaseConfig):
     """Configuration for model architecture."""
 
-    name: str = "resnet50"
+    name: str = "resnet18"
     num_classes: int = 10
+    in_channels: int = 3
     pretrained: bool = True
     dropout: float = 0.2
     freeze_backbone: bool = False
     freeze_layers: List[str] = field(default_factory=list)
     unfreeze_layers: List[str] = field(default_factory=list)
     partial_bn: bool = False
+    width: int = 224
+    height: int = 224
 
 
 @dataclass

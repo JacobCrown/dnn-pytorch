@@ -11,9 +11,9 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.classification.metrics import ClassificationMetrics
+from src.classification.visualizer import ClassificationVisualizer
 from src.common.config import BaseTrainingConfig
 from src.common.enums import TaskType
-from src.common.utils import plot_confusion_matrix, plot_training_history
 from src.core.trainer import BaseTrainer
 
 
@@ -22,6 +22,7 @@ class ClassificationTrainer(BaseTrainer):
 
     _TASK_TYPE: TaskType = TaskType.CLASSIFICATION
     metrics: ClassificationMetrics = ClassificationMetrics()
+    visualizer = ClassificationVisualizer
 
     def __init__(
         self,
@@ -32,11 +33,8 @@ class ClassificationTrainer(BaseTrainer):
         train_loader: DataLoader,
         val_loader: DataLoader,
         train_cfg: BaseTrainingConfig,
-        root_dir: str,
         test_loader: Optional[DataLoader] = None,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
-        save_dir_name: str = "checkpoints",
-        log_dir_name: str = "logs",
     ):
         super().__init__(
             model=model,
@@ -46,11 +44,8 @@ class ClassificationTrainer(BaseTrainer):
             train_loader=train_loader,
             val_loader=val_loader,
             train_cfg=train_cfg,
-            root_dir=root_dir,
             test_loader=test_loader,
             device=device,
-            save_dir_name=save_dir_name,
-            log_dir_name=log_dir_name,
         )
 
     def train_epoch(self) -> Tuple[float, float]:
@@ -69,36 +64,14 @@ class ClassificationTrainer(BaseTrainer):
         for _, (data, target) in enumerate(pbar):
             data, target = data.to(self.device), target.to(self.device)
 
-            # Handle mixup/cutmix labels
-            if isinstance(target, tuple):
-                # For mixup/cutmix, target is (labels, labels_mixed, lam)
-                labels, labels_mixed, lam = target
-                labels, labels_mixed = (
-                    labels.to(self.device),
-                    labels_mixed.to(self.device),
-                )
+            self.optimizer.zero_grad(set_to_none=True)
+            with autocast(device_type=self.device, enabled=self.use_amp):
+                output = self.model(data)
+                loss = self.criterion(output, target)
 
-                self.optimizer.zero_grad(set_to_none=True)
-                with autocast(device_type=self.device, enabled=self.use_amp):
-                    output = self.model(data)
-                    # Calculate mixup loss
-                    loss = lam * self.criterion(output, labels) + (
-                        1 - lam
-                    ) * self.criterion(output, labels_mixed)
-
-                # For accuracy, use original labels
-                pred = output.argmax(dim=1, keepdim=True)
-                correct += pred.eq(labels.view_as(pred)).sum().item()
-                total += labels.size(0)
-            else:
-                self.optimizer.zero_grad(set_to_none=True)
-                with autocast(device_type=self.device, enabled=self.use_amp):
-                    output = self.model(data)
-                    loss = self.criterion(output, target)
-
-                pred = output.argmax(dim=1, keepdim=True)
-                correct += pred.eq(target.view_as(pred)).sum().item()
-                total += target.size(0)
+            pred = output.argmax(dim=1, keepdim=True)
+            correct += pred.eq(target.view_as(pred)).sum().item()
+            total += target.size(0)
 
             if self.use_amp:
                 self.scaler.scale(loss).backward()
@@ -172,14 +145,7 @@ class ClassificationTrainer(BaseTrainer):
     def train(
         self,
     ) -> None:
-        """Train the model for specified number of epochs.
-
-        Args:
-            num_epochs: Number of epochs to train
-
-        Returns:
-            Dictionary containing training history
-        """
+        """Train the model."""
         patience_counter = 0
 
         for epoch in range(self.current_epoch, self.num_epochs):
@@ -280,7 +246,9 @@ class ClassificationTrainer(BaseTrainer):
         avg_loss = total_loss / len(test_loader)
 
         cm = confusion_matrix(all_targets, all_predictions)
-        report = classification_report(all_targets, all_predictions, output_dict=True)
+        report = classification_report(
+            all_targets, all_predictions, output_dict=True, zero_division=0  # type: ignore[arg-type]
+        )
 
         metrics = {
             "test_loss": avg_loss,
@@ -315,17 +283,59 @@ class ClassificationTrainer(BaseTrainer):
                 all_targets.extend(target.cpu().tolist())
         return all_targets, all_predictions
 
-    def visualize_metrics(self) -> None:
-        """Visualize training and validation metrics."""
-        # Training curves (Loss and Accuracy)
-        plot_training_history(
-            self.metrics, save_path=str(self.log_dir / "training_curves.png")
+    def visualize(self) -> None:
+        """Visualize all aspects of training.
+        
+        This method creates visualizations for:
+        - Example images (with and without augmentations)
+        - Data distribution
+        - Model predictions
+        - Training metrics (loss, accuracy, confusion matrix)
+        """
+        vis_save_dir = self.root_dir / "visualizations"
+        
+        print("\n" + "=" * 50)
+        print("GENERATING VISUALIZATIONS")
+        print("=" * 50)
+        
+        # Visualize example images
+        print("\n1. Visualizing example images...")
+        self.visualizer.visualize_example_images(
+            data_loader=self.train_loader,
+            save_dir=vis_save_dir,
+            num_samples_per_class=5,
         )
-
-        # Confusion matrix on validation set
-        y_true, y_pred = self.predict_labels(self.val_loader)
-        cm = confusion_matrix(y_true, y_pred)
-        class_names = self.val_loader.dataset.get_class_names()
-        plot_confusion_matrix(
-            cm, class_names, save_path=str(self.log_dir / "confusion_matrix.png")
+        
+        # Visualize data distribution
+        print("\n2. Visualizing data distribution...")
+        self.visualizer.visualize_data_distribution(
+            data_loader=self.train_loader,
+            save_dir=vis_save_dir,
         )
+        
+        # Visualize predictions (use test set if available, otherwise validation set)
+        print("\n3. Visualizing predictions...")
+        prediction_loader = self.test_loader if self.test_loader is not None else self.val_loader
+        self.visualizer.visualize_predictions(
+            data_loader=prediction_loader,
+            model=self.model,
+            save_dir=vis_save_dir,
+            device=self.device,
+            use_amp=self.use_amp,
+            num_samples_per_class=5,
+        )
+        
+        # Visualize metrics
+        print("\n4. Visualizing training metrics...")
+        self.visualizer.visualize_metrics(
+            metrics=self.metrics,
+            save_dir=vis_save_dir,
+            data_loader=self.val_loader,
+            model=self.model,
+            device=self.device,
+            use_amp=self.use_amp,
+        )
+        
+        print("\n" + "=" * 50)
+        print(f"All visualizations saved to: {vis_save_dir}")
+        print("=" * 50)

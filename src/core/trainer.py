@@ -29,11 +29,8 @@ class BaseTrainer(ABC):
         train_loader: DataLoader,
         val_loader: DataLoader,
         train_cfg: BaseTrainingConfig,
-        root_dir: str = "output",
         test_loader: Optional[DataLoader] = None,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
-        save_dir_name: str = "checkpoints",
-        log_dir_name: str = "logs",
     ):
         """Initialize the trainer.
 
@@ -44,9 +41,9 @@ class BaseTrainer(ABC):
             criterion: Loss function
             optimizer: Optimizer
             scheduler: Learning rate scheduler (optional)
+            train_cfg: Training configuration
+            test_loader: Test data loader (optional)
             device: Device to train on
-            save_dir: Directory to save checkpoints
-            log_dir: Directory to save logs
         """
 
         self.model: nn.Module = model.to(device)
@@ -54,13 +51,16 @@ class BaseTrainer(ABC):
         self.val_loader: DataLoader = val_loader
         self.test_loader: Optional[DataLoader] = test_loader
         self.device: str = device
-        self.root_dir: Path = Path(root_dir) / self._TASK_TYPE.value
-        self.save_dir: Path = Path(root_dir) / save_dir_name
-        self.log_dir: Path = Path(root_dir) / log_dir_name
+        self.root_dir: Path = Path(train_cfg.root_dir) / self._TASK_TYPE.value / self.model.__class__.__name__
+        self.checkpoints_dir: Path = self.root_dir / train_cfg.checkpoints_dir
+        self.log_dir: Path = self.root_dir / train_cfg.logs_dir
+        self.visualize_dir: Path = self.root_dir / train_cfg.visualize_dir
 
         # Create directories
-        self.save_dir.mkdir(parents=True, exist_ok=True)
+        self.root_dir.mkdir(parents=True, exist_ok=True)
+        self.checkpoints_dir.mkdir(parents=True, exist_ok=True)
         self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.visualize_dir.mkdir(parents=True, exist_ok=True)
 
         # Setup loss, optimizer, and scheduler
         self.criterion: nn.Module = criterion
@@ -160,15 +160,15 @@ class BaseTrainer(ABC):
     def _resume_from_checkpoint(self) -> None:
         """Resume training from the latest checkpoint."""
         # Look for the latest checkpoint
-        checkpoint_files = list(self.save_dir.glob("*.pth"))
+        checkpoint_files = list(self.checkpoints_dir.glob("*.pth"))
         if not checkpoint_files:
             print("No checkpoint files found. Starting from scratch.")
             return
 
         # Find the latest checkpoint (prioritize 'last.pth', then most recent)
         latest_checkpoint = None
-        if (self.save_dir / "last.pth").exists():
-            latest_checkpoint = self.save_dir / "last.pth"
+        if (self.checkpoints_dir / "last.pth").exists():
+            latest_checkpoint = self.checkpoints_dir / "last.pth"
         else:
             # Find the most recent checkpoint file
             latest_checkpoint = max(checkpoint_files, key=lambda x: x.stat().st_mtime)
@@ -225,11 +225,11 @@ class BaseTrainer(ABC):
             ),
         }
 
-        filepath = self.save_dir / filename
+        filepath = self.checkpoints_dir / filename
         torch.save(checkpoint, filepath)
 
         if is_best:
-            best_filepath = self.save_dir / "best.pth"
+            best_filepath = self.checkpoints_dir / "best.pth"
             torch.save(checkpoint, best_filepath)
 
     def load_checkpoint(self, filepath: str) -> None:
@@ -306,5 +306,5 @@ class BaseTrainer(ABC):
         pass
 
     @abstractmethod
-    def visualize_metrics(self):
+    def visualize(self):
         pass

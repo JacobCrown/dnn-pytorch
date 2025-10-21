@@ -1,7 +1,7 @@
 # Training hyperparameters
 
-epochs: 3
-batch_size: 32
+epochs: 100
+batch_size: 16
 num_workers: 0
 pin_memory: false
 shuffle: true
@@ -31,7 +31,13 @@ use_amp: false
 gradient_clip: null
 
 # Resume from checkpoint
-resume: false
+resume: null
 
 # Early stopping
-early_stopping_patience: 10
+early_stopping_patience: null
+
+# Root directory for output files
+root_dir: "output"
+checkpoints_dir: "checkpoints"
+logs_dir: "logs"
+visualize_dir: "visualizations"

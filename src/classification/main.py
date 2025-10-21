@@ -1,11 +1,11 @@
 """Main training pipeline for image classification with Hydra configuration."""
 
-import logging
 from pathlib import Path
 
 import albumentations as A
 import hydra
 import torch
+from torchinfo import summary
 from omegaconf import DictConfig, OmegaConf
 
 from src.classification.config import ClassificationConfig
@@ -34,7 +34,7 @@ def main(cfg: DictConfig) -> None:
     # Load config
     root_cfg = cfg.classification
     config = ClassificationConfig.from_dict(root_cfg)
-    logging.info("Resolved configuration:\n%s", OmegaConf.to_yaml(cfg, resolve=True))
+    logger.info("Resolved configuration:\n%s", OmegaConf.to_yaml(cfg, resolve=True))
 
     # ---------------------------------------------------------------------
     # Seed & device
@@ -42,47 +42,53 @@ def main(cfg: DictConfig) -> None:
     # Experiment block optional; default seed=42
     set_seed()
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    logger.info("Device: %s", device)
+
 
     model, data_preproc = get_model(config.model)
     model.to(device)
+    logger.info("Model summary:\n%s", summary(model, input_size=(1, config.model.in_channels, config.model.height, config.model.width),
+                                              col_names=("input_size", "output_size", "num_params", "trainable")))
 
     # ---------------------------------------------------------------------
     # Augmentations + Preprocessing
     # ---------------------------------------------------------------------
-    logging.info("Building augmentation and preprocessing pipelines…")
+    logger.info("Building augmentation and preprocessing pipelines…")
     # Rebuild using augmentations but avoid duplicate ToTensorV2
     train_augs = get_augmentations(config.augmentations, append_to_tensor=False)
 
     train_transforms = A.Compose(train_augs.transforms + data_preproc.transforms)
+    logger.info("Train transforms: %s", train_transforms)
 
     val_transforms = A.Compose(data_preproc.transforms)
+    logger.info("Val transforms: %s", val_transforms)
 
     # ---------------------------------------------------------------------
     # Datasets & loaders
     # ---------------------------------------------------------------------
-    data_root = Path(root_cfg.data.root)
+    data_config = config.data
     train_dataset = ClassificationDataset(
-        data_root / root_cfg.data.train_dir,
+        data_root=Path(data_config.root) / data_config.train_dir,
         transforms=train_transforms,
-        extensions=root_cfg.data.extensions,
-        max_samples=root_cfg.data.max_samples,
+        extensions=data_config.extensions,
+        max_samples=data_config.max_samples,
     )
     val_dataset = ClassificationDataset(
-        data_root / root_cfg.data.val_dir,
+        data_root=Path(data_config.root) / data_config.val_dir,
         transforms=val_transforms,
-        extensions=root_cfg.data.extensions,
-        max_samples=root_cfg.data.max_samples,
+        extensions=data_config.extensions,
+        max_samples=data_config.max_samples,
     )
-    try:
-        test_dataset = ClassificationDataset(
-            data_root / root_cfg.data.test_dir,
-            transforms=val_transforms,
-            extensions=root_cfg.data.extensions,
-            max_samples=root_cfg.data.max_samples,
-        )
-    except Exception as e:
-        logger.error(f"Error creating test dataset: {e}")
+    if data_config.test_dir is None:
+        logger.warning("No test directory found, skipping final evaluation")
         test_dataset = None
+    else:
+        test_dataset = ClassificationDataset(
+            data_root=Path(data_config.root) / data_config.test_dir,
+            transforms=val_transforms,
+            extensions=data_config.extensions,
+            max_samples=data_config.max_samples,
+        )
 
     train_loader, val_loader, test_loader = create_data_loaders(
         config.train,
@@ -91,14 +97,20 @@ def main(cfg: DictConfig) -> None:
         test_dataset,
     )
 
+    data_distribution = train_dataset.get_data_distribution()
+    logger.info("Data distribution:")
+    for data_dist in data_distribution:
+        logger.info("\t%s: %d (%.2f%%)", data_dist.class_name, data_dist.count, data_dist.percentage)
+
     if train_loader is None or val_loader is None:
+        logger.error("No train or val loader found")
         raise DataLoaderException(
             "Cannot continue training without train and val data loaders"
         )
     if test_loader is None:
         logger.warning("No test loader found, skipping final evaluation")
 
-    logging.info("Datasets and loaders ready.")
+    logger.info("Datasets and loaders ready.")
     logger.info("\tTrain samples: %d", len(train_dataset))
     logger.info("\tVal samples: %d", len(val_dataset))
     if test_dataset is not None:
@@ -107,15 +119,15 @@ def main(cfg: DictConfig) -> None:
     # ---------------------------------------------------------------------
     # Model
     # ---------------------------------------------------------------------
-    logging.info("Creating model %s", root_cfg.model.name)
-    logging.info(
+    logger.info("Creating model %s", root_cfg.model.name)
+    logger.info(
         "Model created — total params: %d", sum(p.numel() for p in model.parameters())
     )
 
     # ---------------------------------------------------------------------
     # Optimizer & scheduler
     # ---------------------------------------------------------------------
-    logging.info("Setting up optimizer and scheduler…")
+    logger.info("Setting up optimizer and scheduler…")
     optimizer = get_optimizer(config.train.optimizer, model.parameters())
     scheduler = get_scheduler(config.train.scheduler, optimizer)
 
@@ -132,14 +144,12 @@ def main(cfg: DictConfig) -> None:
         model=model,
         train_loader=train_loader,
         val_loader=val_loader,
+        test_loader=test_loader,
         criterion=criterion,
         optimizer=optimizer,
         scheduler=scheduler,
         train_cfg=config.train,
-        root_dir="output",  # TODO: make this configurable
         device=device,
-        save_dir_name="checkpoints",
-        log_dir_name="logs",
     )
 
     # ---------------------------------------------------------------------
@@ -147,20 +157,19 @@ def main(cfg: DictConfig) -> None:
     # ---------------------------------------------------------------------
     resume_path = config.train.resume
     if resume_path:
-        logging.info("Resuming training from %s", resume_path)
+        logger.info("Resuming training from %s", resume_path)
         trainer.load_checkpoint(resume_path)
 
     # ---------------------------------------------------------------------
     # Train
     # ---------------------------------------------------------------------
-    logging.info("Starting training for %d epochs", config.train.epochs)
+    logger.info("Starting training for %d epochs", config.train.epochs)
     trainer.train()
 
     # ---------------------------------------------------------------------
-    # Visualizations: training curves and confusion matrix on validation set
+    # Visualizations
     # ---------------------------------------------------------------------
-    logging.info("Visualizing metrics…")
-    trainer.visualize_metrics()
+    trainer.visualize()
 
 
 if __name__ == "__main__":

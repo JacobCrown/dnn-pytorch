@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -7,6 +8,12 @@ import albumentations as A
 from src.common.enums import TaskType
 from src.core.dataset import BaseDataset
 
+
+@dataclass
+class DataDistribution:
+    class_name: str
+    count: int
+    percentage: float
 
 class ClassificationDataset(BaseDataset):
     """A PyTorch Dataset for image classification tasks.
@@ -87,3 +94,13 @@ class ClassificationDataset(BaseDataset):
     def get_class_to_idx(self) -> Dict[str, int]:
         """Get the mapping from class names to indices."""
         return self.class_to_idx
+
+    def get_data_distribution(self) -> List[DataDistribution]:
+        """Get the distribution of the data."""
+        data_distribution = [DataDistribution(class_name=class_name, count=0, percentage=0) for class_name in self.class_names]
+        for _, label in self.samples:
+            data_distribution[label].count += 1
+        total_samples = len(self.samples)
+        for data_dist in data_distribution:
+            data_dist.percentage = (data_dist.count / total_samples) * 100
+        return data_distribution

@@ -151,7 +151,7 @@ class BaseDataConfig(BaseConfig):
 
     root: str = "data"
     train_dir: str = "train"
-    val_dir: Optional[str] = None
+    val_dir: str = "val"
     test_dir: Optional[str] = None
     max_samples: Optional[int] = None
 
@@ -191,3 +191,9 @@ class BaseTrainingConfig(BaseConfig):
 
     # Gradient clipping
     gradient_clip: Optional[float] = None
+
+    # Root directory for output files
+    root_dir: str = "output"
+    checkpoints_dir: str = "checkpoints"
+    logs_dir: str = "logs"
+    visualize_dir: str = "visualizations"

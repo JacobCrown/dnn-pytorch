@@ -8,6 +8,9 @@ import torch.nn as nn
 from timm.data.config import resolve_data_config
 
 from src.classification.config import ClassificationModelConfig
+from src.common.logging import setup_logging
+
+logger = setup_logging(__file__)
 
 
 def _matches_any_prefix(name: str, prefixes: Iterable[str]) -> bool:
@@ -78,6 +81,7 @@ def get_model(cfg: ClassificationModelConfig) -> Tuple[nn.Module, A.Compose]:
         cfg.name,
         pretrained=bool(cfg.pretrained),
         num_classes=int(cfg.num_classes),
+        in_chans=int(cfg.in_channels),
         drop_rate=float(cfg.dropout),
     )
 
@@ -95,14 +99,22 @@ def get_model(cfg: ClassificationModelConfig) -> Tuple[nn.Module, A.Compose]:
         partial_bn=partial_bn,
     )
 
-    data_config = resolve_data_config({}, model=model)
-    mean = data_config.get("mean", (0.485, 0.456, 0.406))
-    std = data_config.get("std", (0.229, 0.224, 0.225))
-    h, w = data_config.get("input_size", (3, 224, 224))[1:]
+    data_config = resolve_data_config(args={"in_chans": int(cfg.in_channels)}, model=model)
+    mean = data_config.get("mean")
+    std = data_config.get("std")
+    in_channels, h, w = data_config.get("input_size")
+
+    assert isinstance(mean, tuple) and isinstance(std, tuple) and isinstance(in_channels, int) and isinstance(h, int) and isinstance(w, int), "Input size must be a tuple of 3 elements: (in_channels, height, width)"
+    height = (cfg.height or h)
+    width = (cfg.width or w)
+
+    if height != h or width != w:
+        logger.warning(f"Height ({height}) or width ({width}) do not match the model input size ({h}x{w})."
+                       "This might cause issues with the model training.")
 
     preprocessing = A.Compose(
         [
-            A.Resize(h, w),
+            A.Resize(height, width),
             A.Normalize(mean=mean, std=std),
             A.ToTensorV2(),
         ]
