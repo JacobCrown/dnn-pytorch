@@ -7,6 +7,7 @@ import cv2
 import torch
 from albumentations.pytorch import ToTensorV2
 from torch.utils.data import Dataset
+import numpy as np
 
 from src.common.enums import TaskType
 
@@ -66,10 +67,18 @@ class BaseDataset(Dataset):
         """
         try:
             # Read image with OpenCV and convert BGR to RGB
-            image = cv2.imread(str(file_path), cv2.IMREAD_COLOR)
+            image = cv2.imread(str(file_path), cv2.IMREAD_UNCHANGED)
             if image is None:
                 raise RuntimeError(f"Failed to read image: {file_path}")
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            if image.ndim == 2: # Grayscale image, needs expansion to 3 channels
+                image = np.expand_dims(image, axis=-1)
+            elif image.ndim == 3: # RGB image
+                if image.shape[-1] == 3: # RGB image
+                    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                elif image.shape[-1] == 4: # RGBA image
+                    image = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
+                else:
+                    raise ValueError(f"Invalid image shape: {image.shape}")
 
             # Apply transforms (expects HWC numpy)
             if self.transforms:
