@@ -104,32 +104,3 @@ class BaseDataset(Dataset):
     def __getitem__(self, idx: int) -> Any:
         """Get a sample from the dataset. Override in subclasses."""
         raise NotImplementedError("Subclasses must implement __getitem__")
-
-    def get_sample_info(self, idx: int) -> Dict[str, Any]:
-        """Get metadata about a sample without loading the full data.
-
-        Args:
-            idx: Index of the sample
-
-        Returns:
-            Dictionary containing sample metadata
-        """
-        if idx >= len(self.samples):
-            raise IndexError(f"Index {idx} out of range")
-
-        # This is a basic implementation - subclasses can override
-        return {"index": idx, "samples_count": len(self.samples)}
-
-    def get_dataset_info(self) -> Dict[str, Any]:
-        """Get information about the dataset.
-
-        Returns:
-            Dictionary containing dataset metadata
-        """
-        return {
-            "task_type": self.task_type.value,
-            "data_root": str(self.data_root),
-            "num_samples": len(self.samples),
-            "extensions": self.extensions,
-            "max_samples": self.max_samples,
-        }

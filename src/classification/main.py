@@ -11,11 +11,11 @@ from omegaconf import DictConfig, OmegaConf
 from src.classification.config import ClassificationConfig
 from src.classification.dataset import ClassificationDataset
 from src.classification.trainer import ClassificationTrainer
+from src.classification.model_loader import get_model
 from src.common.augmentations import get_augmentations
 from src.common.exceptions import DataLoaderException
 from src.common.logging import setup_logging
 from src.common.losses import get_loss_function
-from src.common.model_loader import get_model
 from src.common.optimizers import get_optimizer
 from src.common.schedulers import get_scheduler
 from src.common.utils import set_seed

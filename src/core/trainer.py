@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
+import logging
 
 import torch
 import torch.nn as nn
@@ -13,6 +14,8 @@ from src.common.config import BaseTrainingConfig
 from src.common.enums import TaskType
 from src.core.metrics import BaseMetrics
 
+
+logger = logging.getLogger(__name__)
 
 class BaseTrainer(ABC):
     """Trainer class for classification models."""
@@ -149,12 +152,12 @@ class BaseTrainer(ABC):
             required_keys = ["model_state_dict", "optimizer_state_dict", "epoch"]
             for key in required_keys:
                 if key not in checkpoint:
-                    print(f"Warning: Checkpoint missing required key: {key}")
+                    logger.warning(f"Checkpoint missing required key: {key}")
                     return False
 
             return True
         except Exception as e:
-            print(f"Checkpoint validation failed for {filepath}: {e}")
+            logger.warning(f"Checkpoint validation failed for {filepath}: {e}")
             return False
 
     def _resume_from_checkpoint(self) -> None:
@@ -176,11 +179,11 @@ class BaseTrainer(ABC):
         if latest_checkpoint:
             # Validate the checkpoint before attempting to load
             if self._validate_checkpoint(latest_checkpoint):
-                print(f"Resuming from checkpoint: {latest_checkpoint}")
+                logger.info(f"Resuming from checkpoint: {latest_checkpoint}")
                 self.load_checkpoint(str(latest_checkpoint))
-                print(f"Resumed from epoch {self.current_epoch + 1}")
+                logger.info(f"Resumed from epoch {self.current_epoch + 1}")
             else:
-                print(
+                logger.warning(
                     f"Checkpoint {latest_checkpoint} is corrupted. Starting from scratch."
                 )
                 # Optionally remove corrupted checkpoint

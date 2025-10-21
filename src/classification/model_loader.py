@@ -1,6 +1,7 @@
 """Utility to construct and optionally freeze timm models from Hydra config."""
 
 from typing import Iterable, Tuple
+import logging
 
 import albumentations as A
 import timm
@@ -8,9 +9,8 @@ import torch.nn as nn
 from timm.data.config import resolve_data_config
 
 from src.classification.config import ClassificationModelConfig
-from src.common.logging import setup_logging
 
-logger = setup_logging(__file__)
+logger = logging.getLogger(__name__)
 
 
 def _matches_any_prefix(name: str, prefixes: Iterable[str]) -> bool:
