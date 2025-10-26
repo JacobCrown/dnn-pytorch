@@ -5,21 +5,21 @@ from pathlib import Path
 import albumentations as A
 import hydra
 import torch
-from torchinfo import summary
 from omegaconf import DictConfig, OmegaConf
+from torchinfo import summary
 
 from src.classification.config import ClassificationConfig
 from src.classification.dataset import ClassificationDataset
-from src.classification.trainer import ClassificationTrainer
 from src.classification.model_loader import get_model
+from src.classification.trainer import ClassificationTrainer
 from src.common.augmentations import get_augmentations
+from src.common.data_utils import create_data_loaders
 from src.common.exceptions import DataLoaderException
 from src.common.logging import setup_logging
 from src.common.losses import get_loss_function
 from src.common.optimizers import get_optimizer
 from src.common.schedulers import get_scheduler
 from src.common.utils import set_seed
-from src.common.data_utils import create_data_loaders
 
 # Note: real log file will be set inside main() after Hydra changes cwd
 logger = setup_logging(__file__)
@@ -44,11 +44,21 @@ def main(cfg: DictConfig) -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info("Device: %s", device)
 
-
     model, data_preproc = get_model(config.model)
     model.to(device)
-    logger.info("Model summary:\n%s", summary(model, input_size=(1, config.model.in_channels, config.model.height, config.model.width),
-                                              col_names=("input_size", "output_size", "num_params", "trainable")))
+    logger.info(
+        "Model summary:\n%s",
+        summary(
+            model,
+            input_size=(
+                1,
+                config.model.in_channels,
+                config.model.height,
+                config.model.width,
+            ),
+            col_names=("input_size", "output_size", "num_params", "trainable"),
+        ),
+    )
 
     # ---------------------------------------------------------------------
     # Augmentations + Preprocessing
@@ -100,7 +110,12 @@ def main(cfg: DictConfig) -> None:
     data_distribution = train_dataset.get_data_distribution()
     logger.info("Data distribution:")
     for data_dist in data_distribution:
-        logger.info("\t%s: %d (%.2f%%)", data_dist.class_name, data_dist.count, data_dist.percentage)
+        logger.info(
+            "\t%s: %d (%.2f%%)",
+            data_dist.class_name,
+            data_dist.count,
+            data_dist.percentage,
+        )
 
     if train_loader is None or val_loader is None:
         logger.error("No train or val loader found")

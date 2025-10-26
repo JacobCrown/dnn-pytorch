@@ -1,5 +1,5 @@
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List
+from typing import Any
 
 from src.common.enums import TaskType
 
@@ -9,7 +9,7 @@ class BaseMetrics:
     """Base metrics class for all tasks."""
 
     task_type: TaskType = TaskType.UNDEFINED
-    losses: Dict[str, List[float]] = field(default_factory=dict)
+    losses: dict[str, list[float]] = field(default_factory=dict)
 
     def __post_init__(self):
         self.losses = {
@@ -18,12 +18,12 @@ class BaseMetrics:
             "test": [],
         }
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert the metrics instance to a dictionary."""
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "BaseMetrics":
+    def from_dict(cls, data: dict[str, Any]) -> "BaseMetrics":
         """Create an instance of the metrics class from a dictionary.
 
         Args:

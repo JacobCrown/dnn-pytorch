@@ -1,11 +1,11 @@
 """Base dataset class for different task types."""
 
 from pathlib import Path
-from typing import Any, List, Optional, Union
+from typing import Any
 
 import cv2
-from torch.utils.data import Dataset
 import numpy as np
+from torch.utils.data import Dataset
 
 from src.common.enums import TaskType
 
@@ -19,10 +19,10 @@ class BaseDataset(Dataset):
 
     def __init__(
         self,
-        data_root: Union[str, Path],
+        data_root: str | Path,
         transforms: Any,
-        extensions: Optional[List[str]] = None,
-        max_samples: Optional[int] = None,
+        extensions: list[str] | None = None,
+        max_samples: int | None = None,
         task_type: TaskType = TaskType.UNDEFINED,
     ):
         """Initialize the base dataset.
@@ -55,7 +55,7 @@ class BaseDataset(Dataset):
         raise NotImplementedError("Subclasses must implement _build_samples")
 
     @staticmethod
-    def _load_image(file_path: Union[str, Path]) -> np.ndarray:
+    def _load_image(file_path: str | Path) -> np.ndarray:
         """Load and preprocess an image.
 
         Args:
@@ -69,12 +69,12 @@ class BaseDataset(Dataset):
             image = cv2.imread(str(file_path), cv2.IMREAD_UNCHANGED)
             if image is None:
                 raise RuntimeError(f"Failed to read image: {file_path}")
-            if image.ndim == 2: # Grayscale image, needs expansion to 3 channels
+            if image.ndim == 2:  # Grayscale image, needs expansion to 3 channels
                 image = np.expand_dims(image, axis=-1)
-            elif image.ndim == 3: # RGB image
-                if image.shape[-1] == 3: # RGB image
+            elif image.ndim == 3:  # RGB image
+                if image.shape[-1] == 3:  # RGB image
                     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                elif image.shape[-1] == 4: # RGBA image
+                elif image.shape[-1] == 4:  # RGBA image
                     image = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
                 else:
                     raise ValueError(f"Invalid image shape: {image.shape}")
@@ -82,7 +82,7 @@ class BaseDataset(Dataset):
             return image
 
         except Exception as e:
-            raise RuntimeError(f"Error loading image {file_path}: {e}")
+            raise RuntimeError(f"Error loading image {file_path}: {e}") from e
 
     def __len__(self) -> int:
         return len(self.samples)

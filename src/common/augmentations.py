@@ -6,7 +6,7 @@ This module provides two entry points:
 - get_augmentations for Hydra DictConfig-driven YAML
 """
 
-from typing import Any, Dict, List
+from typing import Any
 
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
@@ -14,7 +14,7 @@ from albumentations.pytorch import ToTensorV2
 from src.common.config import AugmentationConfig
 
 
-def _create_transform_from_spec(spec: Dict[str, Any]) -> Any:
+def _create_transform_from_spec(spec: dict[str, Any]) -> Any:
     """
     Recursively creates an Albumentations transform from a spec dictionary.
 
@@ -31,7 +31,7 @@ def _create_transform_from_spec(spec: Dict[str, Any]) -> Any:
 
     # Handle `OneOf` compositor, which contains a list of other transforms
     if name == "OneOf":
-        nested_transforms: List[Any] = [
+        nested_transforms: list[Any] = [
             _create_transform_from_spec(nested_spec)
             for nested_spec in params.get("transforms", [])
         ]
@@ -50,7 +50,7 @@ def _create_transform_from_spec(spec: Dict[str, Any]) -> Any:
 
 
 def get_augmentations(
-    cfg: List[AugmentationConfig], append_to_tensor: bool = True
+    cfg: list[AugmentationConfig], append_to_tensor: bool = True
 ) -> A.Compose:
     """Parse `cfg` and return an Albumentations `Compose`.
 
@@ -58,7 +58,7 @@ def get_augmentations(
         cfg: List of AugmentationConfig objects
         append_to_tensor: if True, append `ToTensorV2()` at the end
     """
-    transforms: List[Any] = []
+    transforms: list[Any] = []
     for aug_spec in cfg:
         transforms.append(_create_transform_from_spec(aug_spec.to_dict()))
 

@@ -1,7 +1,6 @@
+import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
-import logging
 
 import torch
 import torch.nn as nn
@@ -14,8 +13,8 @@ from src.common.config import BaseTrainingConfig
 from src.common.enums import TaskType
 from src.core.metrics import BaseMetrics
 
-
 logger = logging.getLogger(__name__)
+
 
 class BaseTrainer(ABC):
     """Trainer class for classification models."""
@@ -32,7 +31,7 @@ class BaseTrainer(ABC):
         train_loader: DataLoader,
         val_loader: DataLoader,
         train_cfg: BaseTrainingConfig,
-        test_loader: Optional[DataLoader] = None,
+        test_loader: DataLoader | None = None,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
     ):
         """Initialize the trainer.
@@ -52,9 +51,13 @@ class BaseTrainer(ABC):
         self.model: nn.Module = model.to(device)
         self.train_loader: DataLoader = train_loader
         self.val_loader: DataLoader = val_loader
-        self.test_loader: Optional[DataLoader] = test_loader
+        self.test_loader: DataLoader | None = test_loader
         self.device: str = device
-        self.root_dir: Path = Path(train_cfg.root_dir) / self._TASK_TYPE.value / self.model.__class__.__name__
+        self.root_dir: Path = (
+            Path(train_cfg.root_dir)
+            / self._TASK_TYPE.value
+            / self.model.__class__.__name__
+        )
         self.checkpoints_dir: Path = self.root_dir / train_cfg.checkpoints_dir
         self.log_dir: Path = self.root_dir / train_cfg.logs_dir
         self.visualize_dir: Path = self.root_dir / train_cfg.visualize_dir
@@ -71,12 +74,12 @@ class BaseTrainer(ABC):
         self.scheduler: optim.lr_scheduler._LRScheduler = scheduler
 
         # Training configuration
-        self.resume: Optional[str] = train_cfg.resume
-        self.early_stopping_patience: Optional[int] = train_cfg.early_stopping_patience
+        self.resume: str | None = train_cfg.resume
+        self.early_stopping_patience: int | None = train_cfg.early_stopping_patience
 
         # Mixed precision
         self.use_amp: bool = train_cfg.use_amp
-        self.grad_clip: Optional[float] = train_cfg.gradient_clip
+        self.grad_clip: float | None = train_cfg.gradient_clip
         self.scaler: GradScaler = GradScaler(device=self.device, enabled=self.use_amp)
 
         # Setup logging
@@ -108,12 +111,14 @@ class BaseTrainer(ABC):
             raise ValueError("Optimizer is not defined")
         if self.scheduler is None:
             raise ValueError("Scheduler is not defined")
-        if self.resume is not None and isinstance(self.resume, str):
-            if not Path(self.resume).exists():
-                raise FileNotFoundError(f"Checkpoint file not found: {self.resume}")
-        if self.grad_clip is not None:
-            if not isinstance(self.grad_clip, (int, float)):
-                raise ValueError("Gradient clipping must be a number")
+        if (
+            self.resume is not None
+            and isinstance(self.resume, str)
+            and not Path(self.resume).exists()
+        ):
+            raise FileNotFoundError(f"Checkpoint file not found: {self.resume}")
+        if self.grad_clip is not None and not isinstance(self.grad_clip, int | float):
+            raise ValueError("Gradient clipping must be a number")
         if self.scaler is None:
             raise ValueError("Scaler is not defined")
         if self.writer is None:
@@ -262,7 +267,9 @@ class BaseTrainer(ABC):
             try:
                 self.metrics.from_dict(checkpoint["metrics_data"])
             except Exception as e:
-                logger.warning(f"Warning: Could not restore metrics from checkpoint: {e}")
+                logger.warning(
+                    f"Warning: Could not restore metrics from checkpoint: {e}"
+                )
 
     @abstractmethod
     def evaluate(self):

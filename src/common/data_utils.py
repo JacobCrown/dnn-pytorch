@@ -1,5 +1,3 @@
-from typing import Optional, Tuple
-
 from torch.utils.data import DataLoader, Dataset
 
 from src.common.config import BaseTrainingConfig
@@ -8,9 +6,9 @@ from src.common.config import BaseTrainingConfig
 def create_data_loaders(
     config: BaseTrainingConfig,
     train_dataset: Dataset,
-    val_dataset: Optional[Dataset] = None,
-    test_dataset: Optional[Dataset] = None,
-) -> Tuple[DataLoader, Optional[DataLoader], Optional[DataLoader]]:
+    val_dataset: Dataset | None = None,
+    test_dataset: Dataset | None = None,
+) -> tuple[DataLoader, DataLoader | None, DataLoader | None]:
     """Create data loaders for training, validation, and test sets.
     Args:
         config: Training configuration.

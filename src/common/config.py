@@ -9,10 +9,6 @@ from dataclasses import asdict, dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import (
     Any,
-    Dict,
-    List,
-    Optional,
-    Type,
     TypeVar,
     Union,
     get_args,
@@ -32,24 +28,24 @@ T = TypeVar("T", bound="BaseConfig")
 class BaseConfig:
     """Base class providing (de)serialisation helpers for nested configs."""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Return the config as a plain Python dict."""
         return asdict(self)  # type: ignore[arg-type]
 
-    def to_yaml(self, yaml_path: Union[str, Path]) -> None:
+    def to_yaml(self, yaml_path: str | Path) -> None:
         """Serialise this configuration object to a YAML file."""
         with open(Path(yaml_path), "w", encoding="utf-8") as fp:
             yaml.dump(self.to_dict(), fp, default_flow_style=False)
 
     @classmethod
-    def from_yaml(cls: Type[T], yaml_path: Union[str, Path]) -> T:
+    def from_yaml(cls: type[T], yaml_path: str | Path) -> T:
         """Instantiate this config class from a YAML file."""
-        with open(Path(yaml_path), "r", encoding="utf-8") as fp:
-            data: Dict[str, Any] = yaml.safe_load(fp)
+        with open(Path(yaml_path), encoding="utf-8") as fp:
+            data: dict[str, Any] = yaml.safe_load(fp)
         return cls.from_dict(data)
 
     @classmethod
-    def from_dict(cls: Type[T], data: Dict[str, Any]) -> T:
+    def from_dict(cls: type[T], data: dict[str, Any]) -> T:
         """Recursively instantiate this config class from a plain dict."""
         return _from_dict_recursive(cls, data)
 
@@ -57,7 +53,7 @@ class BaseConfig:
 # --- Private recursive helper ---
 
 
-def _from_dict_recursive(cls: Type[T], data: Dict[str, Any]) -> T:
+def _from_dict_recursive(cls: type[T], data: dict[str, Any]) -> T:
     """Recursive builder that correctly handles nested dataclasses."""
     if not is_dataclass(cls):
         raise TypeError(f"{cls} must be a dataclass")
@@ -66,7 +62,7 @@ def _from_dict_recursive(cls: Type[T], data: Dict[str, Any]) -> T:
         return None  # type: ignore
 
     type_hints = get_type_hints(cls)
-    kwargs: Dict[str, Any] = {}
+    kwargs: dict[str, Any] = {}
     for f in fields(cls):
         if f.name not in data:
             continue
@@ -84,7 +80,7 @@ def _from_dict_recursive(cls: Type[T], data: Dict[str, Any]) -> T:
             continue
 
         origin = get_origin(target_type)
-        if origin in (list, List):
+        if origin in (list, list):
             item_type = _resolve_optional_type(get_args(target_type)[0])
             if is_dataclass(item_type):
                 kwargs[f.name] = [
@@ -118,7 +114,7 @@ class AugmentationConfig(BaseConfig):
     """Collection of Albumentations transforms."""
 
     name: str
-    params: Dict[str, Any] = field(default_factory=dict)
+    params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -126,7 +122,7 @@ class OptimizerConfig(BaseConfig):
     """Wrapper around torch.optim selection parameters."""
 
     name: str = "Adam"
-    params: Dict[str, Any] = field(default_factory=dict)
+    params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -134,7 +130,7 @@ class SchedulerConfig(BaseConfig):
     """Wrapper around torch.optim.lr_scheduler parameters."""
 
     name: str = "cosine"
-    params: Dict[str, Any] = field(default_factory=dict)
+    params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -142,7 +138,7 @@ class LossFunctionConfig(BaseConfig):
     """Wrapper around torch.nn.functional parameters."""
 
     name: str = "cross_entropy"
-    params: Dict[str, Any] = field(default_factory=dict)
+    params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -152,11 +148,11 @@ class BaseDataConfig(BaseConfig):
     root: str = "data"
     train_dir: str = "train"
     val_dir: str = "val"
-    test_dir: Optional[str] = None
-    max_samples: Optional[int] = None
+    test_dir: str | None = None
+    max_samples: int | None = None
 
     # Supported image extensions
-    extensions: List[str] = field(
+    extensions: list[str] = field(
         default_factory=lambda: [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
     )
 
@@ -181,16 +177,16 @@ class BaseTrainingConfig(BaseConfig):
     loss_function: LossFunctionConfig = field(default_factory=LossFunctionConfig)
 
     # Early stopping
-    early_stopping_patience: Optional[int] = 10
+    early_stopping_patience: int | None = 10
 
     # Resume from checkpoint
-    resume: Optional[str] = None
+    resume: str | None = None
 
     # Mixed precision
     use_amp: bool = False
 
     # Gradient clipping
-    gradient_clip: Optional[float] = None
+    gradient_clip: float | None = None
 
     # Root directory for output files
     root_dir: str = "output"

@@ -1,12 +1,12 @@
 """Utility functions for classification tasks."""
 
 import random
-from typing import List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import torch
+
 
 def set_seed(seed: int = 42) -> None:
     """Set random seed for reproducibility.
@@ -23,9 +23,9 @@ def set_seed(seed: int = 42) -> None:
 
 def plot_confusion_matrix(
     cm: np.ndarray,
-    class_names: List[str],
-    save_path: Optional[str] = None,
-    figsize: Tuple[int, int] = (10, 8),
+    class_names: list[str],
+    save_path: str | None = None,
+    figsize: tuple[int, int] = (10, 8),
 ) -> None:
     """Plot confusion matrix.
 
@@ -55,4 +55,3 @@ def plot_confusion_matrix(
         plt.show()
 
     plt.close()
-

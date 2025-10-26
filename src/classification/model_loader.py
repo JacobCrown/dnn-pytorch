@@ -1,7 +1,7 @@
 """Utility to construct and optionally freeze timm models from Hydra config."""
 
-from typing import Iterable, Tuple
 import logging
+from collections.abc import Iterable
 
 import albumentations as A
 import timm
@@ -42,14 +42,14 @@ def apply_freezing(
             if hasattr(model, attr):
                 head_modules.append(attr)
         # Freeze everything
-        for name, param in model.named_parameters():
+        for _name, param in model.named_parameters():
             param.requires_grad = False
         # Unfreeze heads
         for attr in head_modules:
             module = getattr(model, attr, None)
             if module is None:
                 continue
-            for name, param in module.named_parameters():
+            for _name, param in module.named_parameters():
                 param.requires_grad = True
 
     # Freeze specific prefixes
@@ -76,7 +76,7 @@ def apply_freezing(
                         module.bias.requires_grad = False
 
 
-def get_model(cfg: ClassificationModelConfig) -> Tuple[nn.Module, A.Compose]:
+def get_model(cfg: ClassificationModelConfig) -> tuple[nn.Module, A.Compose]:
     """Create a timm model and preprocessing according to cfg.model, apply freezing."""
     model = timm.create_model(
         cfg.name,
@@ -100,18 +100,28 @@ def get_model(cfg: ClassificationModelConfig) -> Tuple[nn.Module, A.Compose]:
         partial_bn=partial_bn,
     )
 
-    data_config = resolve_data_config(args={"in_chans": int(cfg.in_channels)}, model=model)
+    data_config = resolve_data_config(
+        args={"in_chans": int(cfg.in_channels)}, model=model
+    )
     mean = data_config.get("mean")
     std = data_config.get("std")
     in_channels, h, w = data_config.get("input_size")
 
-    assert isinstance(mean, tuple) and isinstance(std, tuple) and isinstance(in_channels, int) and isinstance(h, int) and isinstance(w, int), "Input size must be a tuple of 3 elements: (in_channels, height, width)"
-    height = (cfg.height or h)
-    width = (cfg.width or w)
+    assert (
+        isinstance(mean, tuple)
+        and isinstance(std, tuple)
+        and isinstance(in_channels, int)
+        and isinstance(h, int)
+        and isinstance(w, int)
+    ), "Input size must be a tuple of 3 elements: (in_channels, height, width)"
+    height = cfg.height or h
+    width = cfg.width or w
 
     if height != h or width != w:
-        logger.warning(f"Height ({height}) or width ({width}) do not match the model input size ({h}x{w})."
-                       "This might cause issues with the model training.")
+        logger.warning(
+            f"Height ({height}) or width ({width}) do not match the model input size ({h}x{w})."
+            "This might cause issues with the model training."
+        )
 
     preprocessing = A.Compose(
         [

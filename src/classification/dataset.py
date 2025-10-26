@@ -1,9 +1,8 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
-import torch
 import albumentations as A
+import torch
 
 from src.common.enums import TaskType
 from src.core.dataset import BaseDataset
@@ -14,6 +13,7 @@ class DataDistribution:
     class_name: str
     count: int
     percentage: float
+
 
 class ClassificationDataset(BaseDataset):
     """A PyTorch Dataset for image classification tasks.
@@ -40,8 +40,8 @@ class ClassificationDataset(BaseDataset):
         self,
         data_root: Path,
         transforms: A.Compose,
-        extensions: List[str],
-        max_samples: Optional[int] = None,
+        extensions: list[str],
+        max_samples: int | None = None,
     ):
         super().__init__(
             data_root=data_root,
@@ -72,7 +72,7 @@ class ClassificationDataset(BaseDataset):
                     if self.max_samples and len(self.samples) >= self.max_samples:
                         break
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
         """Get a sample from the dataset.
 
         Args:
@@ -90,17 +90,20 @@ class ClassificationDataset(BaseDataset):
             image_t: torch.Tensor = transformed["image"]
         return image_t, label
 
-    def get_class_names(self) -> List[str]:
+    def get_class_names(self) -> list[str]:
         """Get the list of class names."""
         return self.class_names
 
-    def get_class_to_idx(self) -> Dict[str, int]:
+    def get_class_to_idx(self) -> dict[str, int]:
         """Get the mapping from class names to indices."""
         return self.class_to_idx
 
-    def get_data_distribution(self) -> List[DataDistribution]:
+    def get_data_distribution(self) -> list[DataDistribution]:
         """Get the distribution of the data."""
-        data_distribution = [DataDistribution(class_name=class_name, count=0, percentage=0) for class_name in self.class_names]
+        data_distribution = [
+            DataDistribution(class_name=class_name, count=0, percentage=0)
+            for class_name in self.class_names
+        ]
         for _, label in self.samples:
             data_distribution[label].count += 1
         total_samples = len(self.samples)

@@ -1,7 +1,6 @@
 """Trainer for classification models."""
 
 import logging
-from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -17,8 +16,9 @@ from src.common.config import BaseTrainingConfig
 from src.common.enums import TaskType
 from src.core.trainer import BaseTrainer
 
-
 logger = logging.getLogger(__name__)
+
+
 class ClassificationTrainer(BaseTrainer):
     """Trainer class for classification models."""
 
@@ -35,7 +35,7 @@ class ClassificationTrainer(BaseTrainer):
         train_loader: DataLoader,
         val_loader: DataLoader,
         train_cfg: BaseTrainingConfig,
-        test_loader: Optional[DataLoader] = None,
+        test_loader: DataLoader | None = None,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
     ):
         super().__init__(
@@ -50,7 +50,7 @@ class ClassificationTrainer(BaseTrainer):
             device=device,
         )
 
-    def train_epoch(self) -> Tuple[float, float]:
+    def train_epoch(self) -> tuple[float, float]:
         """Train for one epoch.
 
         Returns:
@@ -104,7 +104,7 @@ class ClassificationTrainer(BaseTrainer):
 
         return avg_loss, accuracy
 
-    def validate(self) -> Tuple[float, float]:
+    def validate(self) -> tuple[float, float]:
         """Validate the model.
 
         Returns:
@@ -212,7 +212,7 @@ class ClassificationTrainer(BaseTrainer):
             logger.info(f"Final Test Accuracy: {test_metrics['test_accuracy']:.2f}%")
             logger.info("=" * 50)
 
-    def evaluate(self, test_loader: DataLoader) -> Dict[str, float]:
+    def evaluate(self, test_loader: DataLoader) -> dict[str, float]:
         """Evaluate the model on test data.
 
         Args:
@@ -250,7 +250,10 @@ class ClassificationTrainer(BaseTrainer):
 
         cm = confusion_matrix(all_targets, all_predictions)
         report = classification_report(
-            all_targets, all_predictions, output_dict=True, zero_division=0  # type: ignore[arg-type]
+            all_targets,
+            all_predictions,
+            output_dict=True,
+            zero_division=0,  # type: ignore[arg-type]
         )
 
         metrics = {
@@ -269,11 +272,11 @@ class ClassificationTrainer(BaseTrainer):
 
         return metrics
 
-    def predict_labels(self, data_loader: DataLoader) -> Tuple[List[int], List[int]]:
+    def predict_labels(self, data_loader: DataLoader) -> tuple[list[int], list[int]]:
         """Return true and predicted labels for a loader (CPU lists)."""
         self.model.eval()
-        all_predictions: List[int] = []
-        all_targets: List[int] = []
+        all_predictions: list[int] = []
+        all_targets: list[int] = []
         with torch.inference_mode():
             for data, target in tqdm(data_loader, desc="Predict"):
                 data = data.to(self.device)
@@ -288,7 +291,7 @@ class ClassificationTrainer(BaseTrainer):
 
     def visualize(self) -> None:
         """Visualize all aspects of training.
-        
+
         This method creates visualizations for:
         - Example images (with and without augmentations)
         - Data distribution
@@ -296,11 +299,11 @@ class ClassificationTrainer(BaseTrainer):
         - Training metrics (loss, accuracy, confusion matrix)
         """
         vis_save_dir = self.root_dir / "visualizations"
-        
+
         logger.info("\n" + "=" * 50)
         logger.info("GENERATING VISUALIZATIONS")
         logger.info("=" * 50)
-        
+
         # Visualize example images
         logger.info("\n1. Visualizing example images...")
         self.visualizer.visualize_example_images(
@@ -308,17 +311,19 @@ class ClassificationTrainer(BaseTrainer):
             save_dir=vis_save_dir,
             num_samples_per_class=5,
         )
-        
+
         # Visualize data distribution
         logger.info("\n2. Visualizing data distribution...")
         self.visualizer.visualize_data_distribution(
             data_loader=self.train_loader,
             save_dir=vis_save_dir,
         )
-        
+
         # Visualize predictions (use test set if available, otherwise validation set)
         logger.info("\n3. Visualizing predictions...")
-        prediction_loader = self.test_loader if self.test_loader is not None else self.val_loader
+        prediction_loader = (
+            self.test_loader if self.test_loader is not None else self.val_loader
+        )
         self.visualizer.visualize_predictions(
             data_loader=prediction_loader,
             model=self.model,
@@ -327,7 +332,7 @@ class ClassificationTrainer(BaseTrainer):
             use_amp=self.use_amp,
             num_samples_per_class=5,
         )
-        
+
         # Visualize metrics
         logger.info("\n4. Visualizing training metrics...")
         self.visualizer.visualize_metrics(
@@ -338,7 +343,7 @@ class ClassificationTrainer(BaseTrainer):
             device=self.device,
             use_amp=self.use_amp,
         )
-        
+
         logger.info("\n" + "=" * 50)
         logger.info(f"All visualizations saved to: {vis_save_dir}")
         logger.info("=" * 50)

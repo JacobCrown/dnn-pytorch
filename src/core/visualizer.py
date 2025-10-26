@@ -15,6 +15,7 @@ class BaseVisualizer(ABC):
     This class provides common functionality for visualizing data and metrics
     that can be shared across classification, segmentation, and other tasks.
     """
+
     _TASK_TYPE: TaskType = TaskType.UNDEFINED
 
     def __init__(self, vis_save_dir: Path):

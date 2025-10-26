@@ -1,7 +1,6 @@
 """Visualizer for classification tasks."""
 
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 import cv2
 import matplotlib.patches as patches
@@ -69,7 +68,7 @@ class ClassificationVisualizer(BaseVisualizer):
         dataset: ClassificationDataset,
         num_samples_per_class: int,
         with_augmentations: bool = False,
-    ) -> Tuple[List[np.ndarray], List[int], List[str]]:
+    ) -> tuple[list[np.ndarray], list[int], list[str]]:
         """Get sample images for each class.
 
         Args:
@@ -118,13 +117,13 @@ class ClassificationVisualizer(BaseVisualizer):
 
     @staticmethod
     def _plot_image_grid(
-        images: List[np.ndarray],
-        labels: List[int],
-        class_names: List[str],
+        images: list[np.ndarray],
+        labels: list[int],
+        class_names: list[str],
         num_cols: int,
         title: str,
         save_path: Path,
-        figsize: Tuple[int, int],
+        figsize: tuple[int, int],
     ) -> None:
         """Plot a grid of images.
 
@@ -171,9 +170,9 @@ class ClassificationVisualizer(BaseVisualizer):
     @staticmethod
     def visualize_example_images(
         data_loader: DataLoader,
-        save_dir: Optional[Path] = None,
+        save_dir: Path | None = None,
         num_samples_per_class: int = 5,
-        figsize: Tuple[int, int] = (15, 10),
+        figsize: tuple[int, int] = (15, 10),
     ) -> None:
         """Visualize example training images in a grid.
 
@@ -236,8 +235,8 @@ class ClassificationVisualizer(BaseVisualizer):
     @staticmethod
     def visualize_data_distribution(
         data_loader: DataLoader,
-        save_dir: Optional[Path] = None,
-        figsize: Tuple[int, int] = (12, 6),
+        save_dir: Path | None = None,
+        figsize: tuple[int, int] = (12, 6),
     ) -> None:
         """Visualize the distribution of classes in the dataset.
 
@@ -308,13 +307,13 @@ class ClassificationVisualizer(BaseVisualizer):
     @staticmethod
     def visualize_predictions(
         data_loader: DataLoader,
-        model: Optional[nn.Module] = None,
-        save_dir: Optional[Path] = None,
+        model: nn.Module | None = None,
+        save_dir: Path | None = None,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
         use_amp: bool = False,
         num_samples_per_class: int = 5,
         num_cols: int = 5,
-        figsize: Tuple[int, int] = (15, 12),
+        figsize: tuple[int, int] = (15, 12),
     ) -> None:
         """Visualize model predictions on sample images.
 
@@ -349,7 +348,10 @@ class ClassificationVisualizer(BaseVisualizer):
         num_classes = len(class_names)
 
         # Collect samples organized by class
-        samples_by_class = {i: {"images": [], "true_labels": [], "pred_labels": []} for i in range(num_classes)}
+        samples_by_class = {
+            i: {"images": [], "true_labels": [], "pred_labels": []}
+            for i in range(num_classes)
+        }
 
         with torch.inference_mode():
             for data, target in tqdm(data_loader, desc="Collecting predictions"):
@@ -369,15 +371,21 @@ class ClassificationVisualizer(BaseVisualizer):
                 batch_pred = pred.cpu().numpy()
 
                 for img, true_lbl, pred_lbl in zip(
-                    batch_images, batch_true, batch_pred
+                    batch_images, batch_true, batch_pred, strict=False
                 ):
-                    if len(samples_by_class[true_lbl]["images"]) < num_samples_per_class:
+                    if (
+                        len(samples_by_class[true_lbl]["images"])
+                        < num_samples_per_class
+                    ):
                         samples_by_class[true_lbl]["images"].append(img)
                         samples_by_class[true_lbl]["true_labels"].append(true_lbl)
                         samples_by_class[true_lbl]["pred_labels"].append(pred_lbl)
 
                 # Check if we have enough samples for all classes
-                if all(len(samples_by_class[i]["images"]) >= num_samples_per_class for i in range(num_classes)):
+                if all(
+                    len(samples_by_class[i]["images"]) >= num_samples_per_class
+                    for i in range(num_classes)
+                ):
                     break
 
         # Flatten the samples to create the final lists
@@ -435,7 +443,9 @@ class ClassificationVisualizer(BaseVisualizer):
                 ax.add_patch(rect)
 
                 # Add title with true and predicted labels
-                title_text = f"True: {class_names[true_label]}\nPred: {class_names[pred_label]}"
+                title_text = (
+                    f"True: {class_names[true_label]}\nPred: {class_names[pred_label]}"
+                )
                 ax.set_title(title_text, fontsize=9, color=border_color)
             else:
                 ax.axis("off")
@@ -451,7 +461,9 @@ class ClassificationVisualizer(BaseVisualizer):
         print(f"Predictions visualization saved to {save_path}")
 
         # Print accuracy statistics
-        correct = sum(1 for t, p in zip(true_labels, pred_labels) if t == p)
+        correct = sum(
+            1 for t, p in zip(true_labels, pred_labels, strict=False) if t == p
+        )
         accuracy = 100.0 * correct / len(true_labels)
         print(
             f"Accuracy on visualized samples: {accuracy:.2f}% ({correct}/{len(true_labels)})"
@@ -460,13 +472,13 @@ class ClassificationVisualizer(BaseVisualizer):
     @staticmethod
     def visualize_metrics(
         metrics: BaseMetrics,
-        save_dir: Optional[Path] = None,
-        data_loader: Optional[DataLoader] = None,
-        model: Optional[nn.Module] = None,
+        save_dir: Path | None = None,
+        data_loader: DataLoader | None = None,
+        model: nn.Module | None = None,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
         use_amp: bool = False,
-        figsize_curves: Tuple[int, int] = (12, 5),
-        figsize_cm: Tuple[int, int] = (10, 8),
+        figsize_curves: tuple[int, int] = (12, 5),
+        figsize_cm: tuple[int, int] = (10, 8),
     ) -> None:
         """Visualize training metrics.
 
@@ -510,7 +522,7 @@ class ClassificationVisualizer(BaseVisualizer):
 
     @staticmethod
     def _plot_loss_curves(
-        metrics: BaseMetrics, save_dir: Path, figsize: Tuple[int, int]
+        metrics: BaseMetrics, save_dir: Path, figsize: tuple[int, int]
     ) -> None:
         """Plot loss curves.
 
@@ -540,7 +552,7 @@ class ClassificationVisualizer(BaseVisualizer):
 
     @staticmethod
     def _plot_accuracy_curves(
-        metrics: BaseMetrics, save_dir: Path, figsize: Tuple[int, int]
+        metrics: BaseMetrics, save_dir: Path, figsize: tuple[int, int]
     ) -> None:
         """Plot accuracy curves.
 
@@ -557,9 +569,7 @@ class ClassificationVisualizer(BaseVisualizer):
             if values:  # Only plot if there are values
                 ax.plot(values, label=f"{key.capitalize()} Accuracy", linewidth=2)
 
-        ax.set_title(
-            "Training and Validation Accuracy", fontsize=14, fontweight="bold"
-        )
+        ax.set_title("Training and Validation Accuracy", fontsize=14, fontweight="bold")
         ax.set_xlabel("Epoch", fontsize=12)
         ax.set_ylabel("Accuracy (%)", fontsize=12)
         ax.legend(fontsize=10)
@@ -579,7 +589,7 @@ class ClassificationVisualizer(BaseVisualizer):
         save_dir: Path,
         device: str,
         use_amp: bool,
-        figsize: Tuple[int, int],
+        figsize: tuple[int, int],
     ) -> None:
         """Plot confusion matrix.
 

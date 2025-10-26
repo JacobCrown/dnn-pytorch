@@ -21,6 +21,8 @@ dependencies = [
   "torch>=2.7.0",
   "torchvision>=0.22.0",
   "tqdm>=4.66.4",
+  "segmentation-models-pytorch>=0.5.0",
+  "torchinfo>=1.8.0",
 ]
 
 [tool.uv.sources]
@@ -40,9 +42,45 @@ explicit = true
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[dependency-groups]
+dev = [
+    "mypy>=1.18.2",
+    "pre-commit>=4.3.0",
+    "ruff>=0.14.2",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
 
 [project.scripts]
 dnn-train-classification = "src.classification.main:main"
 dnn-train-segmentation = "src.segmentation.main:main"
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+exclude = [
+  "src/segmentation/**",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort (import sorting)
+    "N",      # pep8-naming
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "SIM",    # flake8-simplify
+]
+ignore = [
+  "E501",  # line length handled by formatter
+  "N812",  # lowercase module imported as non-lowercase alias (allow A for albumentations)
+  "N818",  # Exception name should end with Error
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
