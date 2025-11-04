@@ -1,0 +1,248 @@
+# Geometric transforms
+# - name: HorizontalFlip
+#   params:
+#     p: 0.5
+
+# - name: VerticalFlip
+#   params:
+#     p: 0.5
+
+- name: Affine
+  params:
+    p: 0.5
+    translate_percent: [0.04, 0.04]
+    scale: [0.85, 1.15]
+    rotate: [-5, 5]
+    border_mode: 4
+    interpolation: 1
+    fill: 0
+
+# - name: Perspective
+#   params:
+#     p: 0.6
+
+# - name: GridDistortion
+#   params:
+#     p: 0.5
+
+# - name: ElasticTransform
+#   params:
+#     p: 0.5
+#     alpha: 1
+#     sigma: 50
+#     alpha_affine: 50
+
+# - name: OpticalDistortion
+#   params:
+#     p: 0.5
+#     distort_limit: 0.05
+#     shift_limit: 0.05
+
+# - name: PiecewiseAffine
+#   params:
+#     p: 0.5
+#     scale: 0.03
+
+# - name: ShiftScaleRotate
+#   params:
+#     p: 0.5
+#     shift_limit: 0.0625
+#     scale_limit: 0.1
+#     rotate_limit: 45
+#     border_mode: 4
+
+# - name: Transpose
+#   params:
+#     p: 0.5
+
+# - name: RandomRotate90
+#   params:
+#     p: 0.5
+
+# - name: PadIfNeeded
+#   params:
+#     min_height: 512
+#     min_width: 512
+#     border_mode: 4
+#     p: 1.0
+
+# Dropout
+- name: CoarseDropout
+  params:
+    p: 0.5
+
+# - name: GridDropout
+#   params:
+#     p: 0.5
+#     ratio: 0.5
+
+# - name: MaskDropout
+#   params:
+#     p: 0.5
+
+# - name: ChannelDropout
+#   params:
+#     p: 0.5
+
+# # Pixel-level transforms
+# - name: RandomBrightnessContrast
+#   params:
+#     p: 0.7
+
+# - name: RandomGamma
+#   params:
+#     gamma_limit: [80, 120]
+#     p: 0.5
+
+# - name: HueSaturationValue
+#   params:
+#     p: 0.5
+#     hue_shift_limit: 20
+#     sat_shift_limit: 30
+
+# - name: RGBShift
+#   params:
+#     p: 0.5
+#     r_shift_limit: 20
+#     g_shift_limit: 20
+#     b_shift_limit: 20
+
+# - name: ToGray
+#   params:
+#     p: 0.5
+
+# - name: ToSepia
+#   params:
+#     p: 0.5
+
+# - name: InvertImg
+#   params:
+#     p: 0.5
+
+# - name: Solarize
+#   params:
+#     p: 0.5
+#     threshold: 128
+
+# - name: Posterize
+#   params:
+#     p: 0.5
+#     num_bits: 4
+
+# - name: Equalize
+#   params:
+#     p: 0.5
+#     mode: 'cv'
+
+# - name: CLAHE
+#   params:
+#     p: 0.5
+#     clip_limit: 4.0
+
+# # Blur transforms
+# - name: Blur
+#   params:
+#     p: 0.5
+#     blur_limit: [3, 7]
+
+# - name: GaussianBlur
+#   params:
+#     p: 0.5
+#     blur_limit: [3, 7]
+
+# - name: MedianBlur
+#   params:
+#     p: 0.5
+#     blur_limit: [3, 7]
+
+# - name: MotionBlur
+#   params:
+#     p: 0.5
+#     blur_limit: [3, 7]
+
+# # Weather effects
+# - name: RandomRain
+#   params:
+#     p: 0.3
+
+# - name: RandomFog
+#   params:
+#     p: 0.3
+
+# - name: RandomShadow
+#   params:
+#     p: 0.3
+
+# - name: RandomSnow
+#   params:
+#     p: 0.3
+
+# - name: RandomSunFlare
+#   params:
+#     p: 0.3
+
+# Noise
+- name: GaussNoise
+  params:
+    p: 0.5
+    var_limit: [10.0, 50.0]
+
+# - name: ISONoise
+#   params:
+#     p: 0.5
+#     color_shift: [0.01, 0.05]
+#     intensity: [0.1, 0.5]
+
+# # Color transforms
+# - name: Sharpen
+#   params:
+#     p: 0.5
+
+# - name: Emboss
+#   params:
+#     p: 0.5
+
+# - name: RandomToneCurve
+#   params:
+#     p: 0.5
+
+# - name: Downscale
+#   params:
+#     p: 0.5
+#     scale_min: 0.25
+#     scale_max: 0.75
+
+# - name: Superpixels
+#   params:
+#     p: 0.5
+#     p_replace: 0.1
+#     n_segments: 100
+
+# - name: ChannelShuffle
+#   params:
+#     p: 0.5
+
+# Composition
+# - name: OneOf
+#   params:
+#     p: 0.5
+#     transforms:
+#       - name: MotionBlur
+#         params:
+#           blur_limit: [3, 7]
+#       - name: MedianBlur
+#         params:
+#           blur_limit: [3, 7]
+#       - name: GaussianBlur
+#         params:
+#           blur_limit: [3, 7]
+
+# Utility transforms
+# - name: Lambda
+#   params:
+#     p: 0.5
+#     image: 'lambda x: x'
+
+# - name: NoOp
+#   params:
+#     p: 0.5

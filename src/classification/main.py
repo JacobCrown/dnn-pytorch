@@ -163,7 +163,7 @@ def main(cfg: DictConfig) -> None:
         criterion=criterion,
         optimizer=optimizer,
         scheduler=scheduler,
-        train_cfg=config.train,
+        cfg=config,
         device=device,
     )
 

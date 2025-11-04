@@ -1,6 +1,7 @@
 """Trainer for classification models."""
 
 import logging
+from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -10,9 +11,9 @@ from torch.amp import autocast  # type: ignore[reportMissingImports]
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from src.classification.config import ClassificationConfig
 from src.classification.metrics import ClassificationMetrics
 from src.classification.visualizer import ClassificationVisualizer
-from src.common.config import BaseTrainingConfig
 from src.common.enums import TaskType
 from src.core.trainer import BaseTrainer
 
@@ -34,10 +35,11 @@ class ClassificationTrainer(BaseTrainer):
         scheduler: optim.lr_scheduler._LRScheduler,
         train_loader: DataLoader,
         val_loader: DataLoader,
-        train_cfg: BaseTrainingConfig,
+        cfg: ClassificationConfig,
         test_loader: DataLoader | None = None,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
     ):
+        self.cfg: ClassificationConfig = cfg
         super().__init__(
             model=model,
             criterion=criterion,
@@ -45,7 +47,7 @@ class ClassificationTrainer(BaseTrainer):
             scheduler=scheduler,
             train_loader=train_loader,
             val_loader=val_loader,
-            train_cfg=train_cfg,
+            cfg=cfg.train,
             test_loader=test_loader,
             device=device,
         )
@@ -181,6 +183,8 @@ class ClassificationTrainer(BaseTrainer):
             logger.info(f"Epoch {epoch + 1}/{self.num_epochs}:")
             logger.info(f"  Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}%")
             logger.info(f"  Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%")
+
+            self._log_gpu_memory()
 
             # Always save last checkpoint
             self.save_checkpoint("last.pth")
@@ -347,3 +351,15 @@ class ClassificationTrainer(BaseTrainer):
         logger.info("\n" + "=" * 50)
         logger.info(f"All visualizations saved to: {vis_save_dir}")
         logger.info("=" * 50)
+
+    def get_root_dir_path(self) -> Path:
+        """Get the path of the root directory."""
+        model = self.cfg.model.name
+        height = self.cfg.model.height
+        width = self.cfg.model.width
+        epochs = self.cfg.train.epochs
+        return (
+            Path(self.cfg.train.root_dir)
+            / self._TASK_TYPE.value
+            / f"{model}_{height}x{width}_{epochs}epochs"
+        )

@@ -4,8 +4,8 @@ package: _global_
 
 defaults:
   - _self_
-  - /train: default
-  - /augmentations: default
+  - augmentations: default
+  - train: default
 
 # -----------------------------------------------------------------------------
 # Dataset paths

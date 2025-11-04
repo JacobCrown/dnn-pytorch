@@ -1,7 +1,7 @@
 # Training hyperparameters
 
 epochs: 100
-batch_size: 16
+batch_size: 12
 num_workers: 0
 pin_memory: false
 shuffle: true
@@ -22,7 +22,7 @@ scheduler:
 # Loss function
 loss_function:
   name: CrossEntropyLoss   # options: CrossEntropyLoss, FocalLoss
-  params: {}
+  params: {ignore_index: 255}
 
 # Mixed precision
 use_amp: false

@@ -30,7 +30,7 @@ class BaseTrainer(ABC):
         scheduler: optim.lr_scheduler._LRScheduler,
         train_loader: DataLoader,
         val_loader: DataLoader,
-        train_cfg: BaseTrainingConfig,
+        cfg: BaseTrainingConfig,
         test_loader: DataLoader | None = None,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
     ):
@@ -53,14 +53,11 @@ class BaseTrainer(ABC):
         self.val_loader: DataLoader = val_loader
         self.test_loader: DataLoader | None = test_loader
         self.device: str = device
-        self.root_dir: Path = (
-            Path(train_cfg.root_dir)
-            / self._TASK_TYPE.value
-            / self.model.__class__.__name__
-        )
-        self.checkpoints_dir: Path = self.root_dir / train_cfg.checkpoints_dir
-        self.log_dir: Path = self.root_dir / train_cfg.logs_dir
-        self.visualize_dir: Path = self.root_dir / train_cfg.visualize_dir
+        self.train_cfg: BaseTrainingConfig = cfg
+        self.root_dir: Path = self.get_root_dir_path()
+        self.checkpoints_dir: Path = self.root_dir / self.train_cfg.checkpoints_dir
+        self.log_dir: Path = self.root_dir / self.train_cfg.logs_dir
+        self.visualize_dir: Path = self.root_dir / self.train_cfg.visualize_dir
 
         # Create directories
         self.root_dir.mkdir(parents=True, exist_ok=True)
@@ -74,12 +71,14 @@ class BaseTrainer(ABC):
         self.scheduler: optim.lr_scheduler._LRScheduler = scheduler
 
         # Training configuration
-        self.resume: str | None = train_cfg.resume
-        self.early_stopping_patience: int | None = train_cfg.early_stopping_patience
+        self.resume: str | None = self.train_cfg.resume
+        self.early_stopping_patience: int | None = (
+            self.train_cfg.early_stopping_patience
+        )
 
         # Mixed precision
-        self.use_amp: bool = train_cfg.use_amp
-        self.grad_clip: float | None = train_cfg.gradient_clip
+        self.use_amp: bool = self.train_cfg.use_amp
+        self.grad_clip: float | None = self.train_cfg.gradient_clip
         self.scaler: GradScaler = GradScaler(device=self.device, enabled=self.use_amp)
 
         # Setup logging
@@ -87,7 +86,7 @@ class BaseTrainer(ABC):
 
         # Training state
         self.current_epoch: int = 0
-        self.num_epochs: int = train_cfg.epochs
+        self.num_epochs: int = self.train_cfg.epochs
 
         # Resume from checkpoint if specified
         if self.resume:
@@ -129,6 +128,18 @@ class BaseTrainer(ABC):
             raise ValueError("Number of epochs is not defined")
         if self.metrics is None:
             raise ValueError("Metrics are not defined")
+
+    def _log_gpu_memory(self) -> None:
+        """Log GPU memory usage if available."""
+        if torch.cuda.is_available():
+            max_mem_allocated = torch.cuda.max_memory_allocated() / (1024**2)
+            self.writer.add_scalar(
+                "Memory/Max_GPU_Memory_Allocated_MB",
+                max_mem_allocated,
+                self.current_epoch,
+            )
+            print(f"  Max GPU Memory Allocated: {max_mem_allocated:.2f} MB")
+            torch.cuda.reset_peak_memory_stats()
 
     def _validate_checkpoint(self, filepath: Path) -> bool:
         """Validate if a checkpoint file is valid and can be loaded.
@@ -183,6 +194,11 @@ class BaseTrainer(ABC):
                 logger.warning(
                     f"Checkpoint {latest_checkpoint} is corrupted. Starting from scratch."
                 )
+
+    @abstractmethod
+    def get_root_dir_path(self) -> Path:
+        """Get the path of the root directory. Must be implemented by subclasses."""
+        pass
 
     @abstractmethod
     def train_epoch(self):

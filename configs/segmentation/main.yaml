@@ -1,0 +1,112 @@
+# Base configuration for image classification experiments
+# This file composes core data & model settings with reusable train and augmentation configs.
+package: _global_
+
+defaults:
+  - _self_
+  - augmentations: default
+  - train: default
+
+# -----------------------------------------------------------------------------
+# Dataset paths
+# -----------------------------------------------------------------------------
+
+data:
+  root: "data/segmentation/road/CamVid"
+  train_dir: "train"
+  val_dir: "val"
+  test_dir: "test"
+  extensions: [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
+  mask_extensions: [".png"]
+  # For debugging purposes, optional
+  max_samples: null
+  class_config:
+    - name: Animal
+      pixel_value: [64, 128, 64]
+    - name: Archway
+      pixel_value: [192, 0, 128]
+    - name: Bicyclist
+      pixel_value: [0, 128, 192]
+    - name: Bridge
+      pixel_value: [0, 128, 64]
+    - name: Building
+      pixel_value: [128, 0, 0]
+    - name: Car
+      pixel_value: [64, 0, 128]
+    - name: CartLuggagePram
+      pixel_value: [64, 0, 192]
+    - name: Child
+      pixel_value: [192, 128, 64]
+    - name: Column_Pole
+      pixel_value: [192, 192, 128]
+    - name: Fence
+      pixel_value: [64, 64, 128]
+    - name: LaneMkgsDriv
+      pixel_value: [128, 0, 192]
+    - name: LaneMkgsNonDriv
+      pixel_value: [192, 0, 64]
+    - name: Misc_Text
+      pixel_value: [128, 128, 64]
+    - name: MotorcycleScooter
+      pixel_value: [192, 0, 192]
+    - name: OtherMoving
+      pixel_value: [128, 64, 64]
+    - name: ParkingBlock
+      pixel_value: [64, 192, 128]
+    - name: Pedestrian
+      pixel_value: [64, 64, 0]
+    - name: Road
+      pixel_value: [128, 64, 128]
+    - name: RoadShoulder
+      pixel_value: [128, 128, 192]
+    - name: Sidewalk
+      pixel_value: [0, 0, 192]
+    - name: SignSymbol
+      pixel_value: [192, 128, 128]
+    - name: Sky
+      pixel_value: [128, 128, 128]
+    - name: SUVPickupTruck
+      pixel_value: [64, 128, 192]
+    - name: TrafficCone
+      pixel_value: [0, 0, 64]
+    - name: TrafficLight
+      pixel_value: [0, 64, 64]
+    - name: Train
+      pixel_value: [192, 64, 128]
+    - name: Tree
+      pixel_value: [128, 128, 0]
+    - name: Truck_Bus
+      pixel_value: [192, 128, 192]
+    - name: Tunnel
+      pixel_value: [64, 0, 64]
+    - name: VegetationMisc
+      pixel_value: [192, 192, 0]
+    - name: Void
+      pixel_value: [0, 0, 0]
+    - name: Wall
+      pixel_value: [64, 192, 0]
+
+# -----------------------------------------------------------------------------
+# Model definition (segmentation-models-pytorch)
+# -----------------------------------------------------------------------------
+# Segmentation model config compatible with segmentation-models-pytorch Unet
+model:
+  architecture: "Unet"
+  height: 512
+  width: 512
+  in_channels: 3
+  classes: 32
+  params:
+    encoder_name: "resnet18"
+    encoder_depth: 3
+    encoder_weights: "imagenet"
+    decoder_use_batchnorm: true
+    decoder_channels: [64, 32, 16]
+    decoder_attention_type: null
+    aux_params: null
+    dropout: 0.4
+    activation: null
+
+
+# The `../train: default` and `../augmentations: default` entries above
+# inject `train` and `augmentations` nodes directly into this config.
