@@ -1,56 +1,67 @@
 """Dataset for segmentation tasks."""
 
-import os
 from pathlib import Path
-from typing import List, Tuple, Optional, Dict, Any, Union
+import logging
 
-import cv2
+import albumentations as A
 import torch
 import numpy as np
-from torch.utils.data import Dataset
 
-from core.dataset import BaseDataset
 from src.common.enums import TaskType
+from src.core.dataset import BaseDataset
+from src.segmentation.config import ClassConfig
 
+
+logger = logging.getLogger(__name__)
 
 class SegmentationDataset(BaseDataset):
     """A PyTorch Dataset for image segmentation tasks.
-
+    
     This dataset expects a directory structure where images and masks are paired:
     data_root/
-    ├── images/
-    │   ├── image1.jpg
-    │   ├── image2.jpg
-    │   └── ...
-    ├── masks/
-    │   ├── image1.png
-    │   ├── image2.png
-    │   └── ...
-    └── ...
+    ├── train/
+    │   ├── images/
+    │   │   ├── image1.jpg
+    │   │   ├── image2.jpg
+    │   │   └── ...
+    │   ├── masks/
+    │   │   ├── mask1.png
+    │   │   ├── mask2.png
+    │   │   └── ...
+    └── val/
+    │   ├── images/
+    │   │   ├── image1.jpg
+    │   │   ├── image2.jpg
+    │   │   └── ...
+    │   ├── masks/
+    │   │   ├── mask1.png
+    │   │   ├── mask2.png
+    │   │   └── ...
+    ...
 
     Args:
-        data_root (str): Root directory containing images and masks
+        data_root (Path): Root directory containing images and masks
         transforms (Compose): Transforms to apply to images and masks
-        extensions (List[str]): List of image file extensions to include
-        mask_extensions (List[str]): List of mask file extensions to include
-        max_samples (Optional[int]): Maximum number of samples to load
-        normalize_masks (bool): Whether to normalize mask values to [0, 1]
-        binary_masks (bool): Whether masks are binary or multi-class
+        class_config (list[ClassConfig]): A list of class configurations.
+        extensions (list[str]): List of image file extensions to include
+        mask_extensions (list[str]): List of mask file extensions to include
+        max_samples (int | None): Maximum number of samples to load
     """
 
     def __init__(
         self,
-        data_root: str,
-        transforms: Any,
-        extensions: Optional[List[str]] = None,
-        mask_extensions: Optional[List[str]] = None,
-        max_samples: Optional[int] = None,
-        normalize_masks: bool = True,
-        binary_masks: bool = True,
+        data_root: Path,
+        transforms: A.Compose,
+        class_config: list[ClassConfig],
+        extensions: list[str],
+        mask_extensions: list[str],
+        max_samples: int | None = None,
     ):
-        self.mask_extensions = mask_extensions or [".png", ".jpg", ".jpeg"]
-        self.normalize_masks = normalize_masks
-        self.binary_masks = binary_masks
+        self.mask_extensions = mask_extensions
+        self.class_config = class_config
+        self.rgb_to_idx = {tuple(c.pixel_value): idx for idx, c in enumerate(class_config)}
+        self.idx_to_name = {idx: c.name for idx, c in enumerate(class_config)}
+        self.lookup_table = self._create_lookup_table()
 
         super().__init__(
             data_root=data_root,
@@ -59,6 +70,37 @@ class SegmentationDataset(BaseDataset):
             max_samples=max_samples,
             task_type=TaskType.SEGMENTATION,
         )
+
+    def _create_lookup_table(self) -> np.ndarray:
+        """Create a lookup table for efficient mask conversion."""
+        max_id = 0
+        for color in self.rgb_to_idx.keys():
+            color_id = color[0] * 256**2 + color[1] * 256 + color[2]
+            if color_id > max_id:
+                max_id = color_id
+
+        lut = np.full(max_id + 1, 255, dtype=np.int64)
+
+        for color, class_id in self.rgb_to_idx.items():
+            color_id = color[0] * 256**2 + color[1] * 256 + color[2]
+            lut[color_id] = class_id
+            
+        return lut
+
+    def _convert_pixel_mask_to_class_mask(self, mask: np.ndarray) -> np.ndarray:
+        """Converts an RGB mask to a class index mask using a lookup table.
+
+        Args:
+            mask (np.ndarray): The RGB mask as a NumPy array (H, W, 3).
+
+        Returns:
+            np.ndarray: A class index mask (H, W).
+        """
+        mask_int32 = mask.astype(np.int32)
+        integer_mask = mask_int32.dot(np.array([256**2, 256, 1], dtype=np.int32))
+        class_mask = self.lookup_table[integer_mask]
+
+        return class_mask.astype(np.int64)
 
     def _build_samples(self) -> None:
         """Build the list of samples for segmentation."""
@@ -70,116 +112,66 @@ class SegmentationDataset(BaseDataset):
         if not masks_dir.exists():
             raise FileNotFoundError(f"Masks directory not found: {masks_dir}")
 
-        # Get all image files
         image_files = []
         for ext in self.extensions:
             image_files.extend(images_dir.glob(f"*{ext}"))
-            image_files.extend(images_dir.glob(f"*{ext.upper()}"))
 
-        # Build pairs of images and corresponding masks
         for image_file in image_files:
-            # Try to find corresponding mask
             mask_file = self._find_mask_file(masks_dir, image_file)
             if mask_file is not None:
                 self.samples.append((str(image_file), str(mask_file)))
                 if self.max_samples and len(self.samples) >= self.max_samples:
                     break
+            else:
+                logger.warning(f"No mask found for image: {image_file}")
 
         if not self.samples:
             raise RuntimeError("No valid image-mask pairs found")
 
-    def _find_mask_file(self, masks_dir: Path, image_file: Path) -> Optional[Path]:
-        """Find the corresponding mask file for an image file.
-
-        Args:
-            masks_dir: Directory containing mask files
-            image_file: Path to the image file
-
-        Returns:
-            Path to the corresponding mask file, or None if not found
-        """
-        # Try different mask extensions
-        for ext in self.mask_extensions:
-            # Try exact name match with different extension
-            mask_name = image_file.stem + ext
-            mask_file = masks_dir / mask_name
+    def _find_mask_file(self, masks_dir: Path, image_file: Path) -> Path | None:
+        """Find the corresponding mask file for an image file."""
+        for mask_ext in self.mask_extensions:
+            mask_file = masks_dir / f"{image_file.stem}{mask_ext}"
             if mask_file.exists():
                 return mask_file
-
-            # Try with uppercase extension
-            mask_name = image_file.stem + ext.upper()
-            mask_file = masks_dir / mask_name
-            if mask_file.exists():
-                return mask_file
-
+        
+        logger.warning(f"No mask found for image with exact name match: {image_file.stem}")
         return None
 
-    def _load_mask(self, mask_path: Union[str, Path]) -> torch.Tensor:
-        """Load and preprocess a segmentation mask.
-
-        Args:
-            mask_path: Path to the mask file
-
-        Returns:
-            Preprocessed mask tensor
-        """
-        try:
-            # Read mask with OpenCV (grayscale)
-            mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
-            if mask is None:
-                raise RuntimeError(f"Failed to read mask: {mask_path}")
-
-            # Normalize to [0, 1] if requested
-            if self.normalize_masks:
-                if mask.max() > 1:
-                    mask = mask.astype(np.float32) / 255.0
-                else:
-                    mask = mask.astype(np.float32)
-
-            # Convert to tensor
-            mask = torch.from_numpy(mask).float()
-
-            # Add channel dimension if needed
-            if mask.dim() == 2:
-                mask = mask.unsqueeze(0)  # (H, W) -> (1, H, W)
-
-            return mask
-
-        except Exception as e:
-            raise RuntimeError(f"Error loading mask {mask_path}: {e}")
-
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         """Get a sample from the dataset.
 
         Args:
             idx (int): Index of the sample
 
         Returns:
-            Tuple[torch.Tensor, torch.Tensor]: (image, mask) pair
+            Tuple[torch.Tensor, torch.Tensor]: A tuple containing the transformed image
+            (C, H, W) and mask (H, W).
         """
         image_path, mask_path = self.samples[idx]
 
-        # Load image and mask
         image = self._load_image(image_path)
-        mask = self._load_mask(mask_path)
+        mask_rgb = self._load_image(mask_path)
+        
+        # Convert RGB mask to class indices
+        mask = self._convert_pixel_mask_to_class_mask(mask_rgb)
 
-        # Ensure image and mask have the same spatial dimensions
-        if image.shape[-2:] != mask.shape[-2:]:
-            # Resize mask to match image dimensions
-            mask = torch.nn.functional.interpolate(
-                mask.unsqueeze(0), size=image.shape[-2:], mode="nearest"
-            ).squeeze(0)
+        # Apply paired transforms
+        if self.transforms is not None:
+            transformed = self.transforms(image=image, mask=mask)
+            image_a: torch.Tensor = transformed["image"]
+            mask_a: torch.Tensor = transformed["mask"]
 
-        return image, mask
+        # The mask should be a LongTensor with shape (H, W) for CrossEntropyLoss
+        if mask_a.ndim == 3 and mask_a.shape[0] == 1:
+            mask_a = mask_a.squeeze(0)
 
-    def get_dataset_info(self) -> Dict[str, Any]:
-        """Get information about the dataset."""
-        info = super().get_dataset_info()
-        info.update(
-            {
-                "mask_extensions": self.mask_extensions,
-                "normalize_masks": self.normalize_masks,
-                "binary_masks": self.binary_masks,
-            }
-        )
-        return info
+        return image_a.float(), mask_a.long()
+
+    def get_class_names(self) -> list[str]:
+        """Get list of class names in order.
+
+        Returns:
+            List of class names
+        """
+        return [self.idx_to_name[i] for i in range(len(self.class_config))]
