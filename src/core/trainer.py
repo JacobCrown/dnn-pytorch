@@ -11,6 +11,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from src.common.config import BaseTrainingConfig
 from src.common.enums import TaskType
+from src.common.types import ONE_OF_MODEL_MANAGER_CONFIG
 from src.core.metrics import BaseMetrics
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ class BaseTrainer(ABC):
 
     def __init__(
         self,
-        model: nn.Module,
+        model_manager: ONE_OF_MODEL_MANAGER_CONFIG,
         criterion: nn.Module,
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler._LRScheduler,
@@ -37,7 +38,7 @@ class BaseTrainer(ABC):
         """Initialize the trainer.
 
         Args:
-            model: PyTorch model to train
+            model_manager: Base model manager to train
             train_loader: Training data loader
             val_loader: Validation data loader (optional)
             criterion: Loss function
@@ -48,7 +49,8 @@ class BaseTrainer(ABC):
             device: Device to train on
         """
 
-        self.model: nn.Module = model.to(device)
+        self.model_manager: ONE_OF_MODEL_MANAGER_CONFIG = model_manager
+        self.model: nn.Module = self.model_manager.model.to(device)
         self.train_loader: DataLoader = train_loader
         self.val_loader: DataLoader = val_loader
         self.test_loader: DataLoader | None = test_loader
@@ -71,7 +73,11 @@ class BaseTrainer(ABC):
         self.scheduler: optim.lr_scheduler._LRScheduler = scheduler
 
         # Training configuration
-        self.resume: str | None = self.train_cfg.resume
+        self.resume_from_checkpoint_path: Path | None = (
+            Path(self.train_cfg.resume_from_checkpoint)
+            if self.train_cfg.resume_from_checkpoint
+            else None
+        )
         self.early_stopping_patience: int | None = (
             self.train_cfg.early_stopping_patience
         )
@@ -89,7 +95,7 @@ class BaseTrainer(ABC):
         self.num_epochs: int = self.train_cfg.epochs
 
         # Resume from checkpoint if specified
-        if self.resume:
+        if self.resume_from_checkpoint_path:
             self._resume_from_checkpoint()
 
         self._check_all_vars_initialized()
@@ -98,8 +104,8 @@ class BaseTrainer(ABC):
         """Check if all required variables are initialized."""
         if self._TASK_TYPE == TaskType.UNDEFINED:
             raise ValueError("Task type is not defined")
-        if self.model is None:
-            raise ValueError("Model is not defined")
+        if self.model_manager is None:
+            raise ValueError("Model manager is not defined")
         if self.train_loader is None:
             raise ValueError("Training data loader is not defined")
         if self.val_loader is None:
@@ -111,11 +117,13 @@ class BaseTrainer(ABC):
         if self.scheduler is None:
             raise ValueError("Scheduler is not defined")
         if (
-            self.resume is not None
-            and isinstance(self.resume, str)
-            and not Path(self.resume).exists()
+            self.resume_from_checkpoint_path is not None
+            and isinstance(self.resume_from_checkpoint_path, Path)
+            and not Path(self.resume_from_checkpoint_path).exists()
         ):
-            raise FileNotFoundError(f"Checkpoint file not found: {self.resume}")
+            raise FileNotFoundError(
+                f"Checkpoint file not found: {self.resume_from_checkpoint_path}"
+            )
         if self.grad_clip is not None and not isinstance(self.grad_clip, int | float):
             raise ValueError("Gradient clipping must be a number")
         if self.scaler is None:
@@ -138,7 +146,7 @@ class BaseTrainer(ABC):
                 max_mem_allocated,
                 self.current_epoch,
             )
-            print(f"  Max GPU Memory Allocated: {max_mem_allocated:.2f} MB")
+            logger.info(f"  Max GPU Memory Allocated: {max_mem_allocated:.2f} MB")
             torch.cuda.reset_peak_memory_stats()
 
     def _validate_checkpoint(self, filepath: Path) -> bool:
@@ -170,29 +178,17 @@ class BaseTrainer(ABC):
 
     def _resume_from_checkpoint(self) -> None:
         """Resume training from the latest checkpoint."""
-        # Look for the latest checkpoint
-        checkpoint_files = list(self.checkpoints_dir.glob("*.pth"))
-        if not checkpoint_files:
-            logger.info("No checkpoint files found. Starting from scratch.")
-            return
-
-        # Find the latest checkpoint (prioritize 'last.pth', then most recent)
-        latest_checkpoint = None
-        if (self.checkpoints_dir / "last.pth").exists():
-            latest_checkpoint = self.checkpoints_dir / "last.pth"
-        else:
-            # Find the most recent checkpoint file
-            latest_checkpoint = max(checkpoint_files, key=lambda x: x.stat().st_mtime)
-
-        if latest_checkpoint:
+        if self.resume_from_checkpoint_path:
             # Validate the checkpoint before attempting to load
-            if self._validate_checkpoint(latest_checkpoint):
-                logger.info(f"Resuming from checkpoint: {latest_checkpoint}")
-                self.load_checkpoint(str(latest_checkpoint))
+            if self._validate_checkpoint(self.resume_from_checkpoint_path):
+                logger.info(
+                    f"Resuming from checkpoint: {self.resume_from_checkpoint_path}"
+                )
+                self.load_checkpoint(self.resume_from_checkpoint_path)
                 logger.info(f"Resumed from epoch {self.current_epoch + 1}")
             else:
-                logger.warning(
-                    f"Checkpoint {latest_checkpoint} is corrupted. Starting from scratch."
+                raise ValueError(
+                    f"Checkpoint {self.resume_from_checkpoint_path} is corrupted. Starting from scratch."
                 )
 
     @abstractmethod
@@ -205,8 +201,14 @@ class BaseTrainer(ABC):
         pass
 
     @abstractmethod
-    def train(self):
+    def train_(self):
         pass
+
+    def train(self):
+        """Train the model."""
+        self.visualize_pre_train()
+        self.train_()
+        self.visualize_post_train()
 
     @abstractmethod
     def validate(self):
@@ -221,7 +223,8 @@ class BaseTrainer(ABC):
         # Save only essential data, not the entire metrics object
         checkpoint = {
             "epoch": self.current_epoch,
-            "model_state_dict": self.model.state_dict(),
+            "model_state_dict": self.model_manager.get_model_state_dict(),
+            "model_config": self.model_manager.model_cfg.to_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": (
                 self.scheduler.state_dict() if self.scheduler else None
@@ -235,7 +238,7 @@ class BaseTrainer(ABC):
         filepath = self.checkpoints_dir / filename
         torch.save(checkpoint, filepath)
 
-    def load_checkpoint(self, filepath: str) -> None:
+    def load_checkpoint(self, filepath: Path) -> None:
         """Load model checkpoint.
 
         Args:
@@ -244,48 +247,45 @@ class BaseTrainer(ABC):
         try:
             # Use weights_only=False explicitly since we trust our own checkpoints
             checkpoint = torch.load(
-                filepath, map_location=self.device, weights_only=False
+                str(filepath), map_location=self.device, weights_only=False
             )
         except Exception as e:
-            logger.error(f"Error loading checkpoint {filepath}: {e}")
-            logger.info("Starting training from scratch...")
-            return
+            raise ValueError(f"Error loading checkpoint {filepath}: {e}") from e
+
+        if "model_config" in checkpoint:
+            self.model_manager.check_model_config(checkpoint["model_config"])
+        else:
+            raise ValueError("Model config not found in checkpoint")
 
         # Load model state
         if "model_state_dict" in checkpoint:
-            self.model.load_state_dict(checkpoint["model_state_dict"])
+            self.model_manager.load_model_state_dict(checkpoint["model_state_dict"])
         else:
-            logger.warning("Warning: No model state dict found in checkpoint")
+            raise ValueError("Model state dict not found in checkpoint")
 
         # Load optimizer state
         if "optimizer_state_dict" in checkpoint:
             self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         else:
-            logger.warning("Warning: No optimizer state dict found in checkpoint")
+            raise ValueError("Optimizer state dict not found in checkpoint")
 
         # Load scheduler state
-        if (
-            self.scheduler
-            and "scheduler_state_dict" in checkpoint
-            and checkpoint["scheduler_state_dict"]
-        ):
+        if "scheduler_state_dict" in checkpoint:
             self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        else:
+            raise ValueError("Scheduler state dict not found in checkpoint")
 
         # Load epoch
         if "epoch" in checkpoint:
             self.current_epoch = checkpoint["epoch"]
         else:
-            logger.warning("Warning: No epoch information found in checkpoint")
-            self.current_epoch = 0
+            raise ValueError("Epoch information not found in checkpoint")
 
         # Restore metrics data if available
         if "metrics_data" in checkpoint and hasattr(self.metrics, "from_dict"):
-            try:
-                self.metrics.from_dict(checkpoint["metrics_data"])
-            except Exception as e:
-                logger.warning(
-                    f"Warning: Could not restore metrics from checkpoint: {e}"
-                )
+            self.metrics = self.metrics.from_dict(checkpoint["metrics_data"])
+        else:
+            raise ValueError("Metrics data not found in checkpoint")
 
     @abstractmethod
     def evaluate(self):
@@ -296,5 +296,9 @@ class BaseTrainer(ABC):
         pass
 
     @abstractmethod
-    def visualize(self):
+    def visualize_pre_train(self):
+        pass
+
+    @abstractmethod
+    def visualize_post_train(self):
         pass

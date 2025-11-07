@@ -1,11 +1,15 @@
 """Utility functions for classification tasks."""
 
+import logging
 import random
 
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import torch
+
+logger = logging.getLogger(__name__)
 
 
 def set_seed(seed: int = 42) -> None:
@@ -55,3 +59,21 @@ def plot_confusion_matrix(
         plt.show()
 
     plt.close()
+
+
+def get_opencv_interpolation_flag(name: str) -> int:
+    mapping = {
+        "nearest": cv2.INTER_NEAREST,
+        "linear": cv2.INTER_LINEAR,
+        "bilinear": cv2.INTER_LINEAR,
+        "area": cv2.INTER_AREA,
+        "cubic": cv2.INTER_CUBIC,
+        "lanczos": cv2.INTER_LANCZOS4,
+    }
+    result = mapping.get(name.lower())
+    if result is None:
+        logger.warning(
+            f"Interpolation name {name} not found, using default interpolation flag cv2.INTER_LINEAR"
+        )
+        return cv2.INTER_LINEAR
+    return result

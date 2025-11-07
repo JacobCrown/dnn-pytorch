@@ -6,13 +6,13 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from sklearn.metrics import classification_report, confusion_matrix
 from torch.amp import autocast  # type: ignore[reportMissingImports]
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.classification.config import ClassificationConfig
 from src.classification.metrics import ClassificationMetrics
+from src.classification.model_manager import ClassificationModelManager
 from src.classification.visualizer import ClassificationVisualizer
 from src.common.enums import TaskType
 from src.core.trainer import BaseTrainer
@@ -29,7 +29,7 @@ class ClassificationTrainer(BaseTrainer):
 
     def __init__(
         self,
-        model: nn.Module,
+        model_manager: ClassificationModelManager,
         criterion: nn.Module,
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler._LRScheduler,
@@ -41,7 +41,7 @@ class ClassificationTrainer(BaseTrainer):
     ):
         self.cfg: ClassificationConfig = cfg
         super().__init__(
-            model=model,
+            model_manager=model_manager,
             criterion=criterion,
             optimizer=optimizer,
             scheduler=scheduler,
@@ -146,7 +146,7 @@ class ClassificationTrainer(BaseTrainer):
 
         return avg_loss, accuracy
 
-    def train(
+    def train_(
         self,
     ) -> None:
         """Train the model."""
@@ -212,19 +212,11 @@ class ClassificationTrainer(BaseTrainer):
             logger.info("\n" + "=" * 50)
             logger.info("FINAL TEST EVALUATION")
             logger.info("=" * 50)
-            test_metrics = self.evaluate(self.test_loader)
-            logger.info(f"Final Test Accuracy: {test_metrics['test_accuracy']:.2f}%")
+            self.evaluate(self.test_loader)
             logger.info("=" * 50)
 
-    def evaluate(self, test_loader: DataLoader) -> dict[str, float]:
-        """Evaluate the model on test data.
-
-        Args:
-            test_loader: Test data loader
-
-        Returns:
-            Dictionary containing evaluation metrics
-        """
+    def evaluate(self, test_loader: DataLoader) -> None:
+        """Evaluate the model on test data."""
         self.model.eval()
         total_loss = 0.0
         correct = 0
@@ -252,29 +244,10 @@ class ClassificationTrainer(BaseTrainer):
         accuracy = 100.0 * correct / total
         avg_loss = total_loss / len(test_loader)
 
-        cm = confusion_matrix(all_targets, all_predictions)
-        report = classification_report(
-            all_targets,
-            all_predictions,
-            output_dict=True,
-            zero_division=0,  # type: ignore[arg-type]
-        )
-
-        metrics = {
-            "test_loss": avg_loss,
-            "test_accuracy": accuracy,
-            "correct_predictions": correct,
-            "total_samples": total,
-            "confusion_matrix": cm,
-            "classification_report": report,
-        }
-
         logger.info("Test Results:")
         logger.info(f"  Loss: {avg_loss:.4f}")
         logger.info(f"  Accuracy: {accuracy:.2f}%")
         logger.info(f"  Correct: {correct}/{total}")
-
-        return metrics
 
     def predict_labels(self, data_loader: DataLoader) -> tuple[list[int], list[int]]:
         """Return true and predicted labels for a loader (CPU lists)."""
@@ -293,26 +266,22 @@ class ClassificationTrainer(BaseTrainer):
                 all_targets.extend(target.cpu().tolist())
         return all_targets, all_predictions
 
-    def visualize(self) -> None:
+    def visualize_pre_train(self) -> None:
         """Visualize all aspects of training.
 
         This method creates visualizations for:
         - Example images (with and without augmentations)
         - Data distribution
-        - Model predictions
-        - Training metrics (loss, accuracy, confusion matrix)
         """
-        vis_save_dir = self.root_dir / "visualizations"
-
         logger.info("\n" + "=" * 50)
-        logger.info("GENERATING VISUALIZATIONS")
+        logger.info("GENERATING PRE-TRAIN VISUALIZATIONS")
         logger.info("=" * 50)
 
         # Visualize example images
         logger.info("\n1. Visualizing example images...")
         self.visualizer.visualize_example_images(
             data_loader=self.train_loader,
-            save_dir=vis_save_dir,
+            save_dir=self.visualize_dir,
             num_samples_per_class=5,
         )
 
@@ -320,28 +289,38 @@ class ClassificationTrainer(BaseTrainer):
         logger.info("\n2. Visualizing data distribution...")
         self.visualizer.visualize_data_distribution(
             data_loader=self.train_loader,
-            save_dir=vis_save_dir,
+            save_dir=self.visualize_dir,
         )
 
+    def visualize_post_train(self) -> None:
+        """Visualize all aspects of training.
+
+        This method creates visualizations for:
+        - Model predictions
+        - Training metrics (loss, accuracy, confusion matrix)
+        """
+        logger.info("\n" + "=" * 50)
+        logger.info("GENERATING POST-TRAIN VISUALIZATIONS")
+        logger.info("=" * 50)
         # Visualize predictions (use test set if available, otherwise validation set)
-        logger.info("\n3. Visualizing predictions...")
+        logger.info("\n1. Visualizing predictions...")
         prediction_loader = (
             self.test_loader if self.test_loader is not None else self.val_loader
         )
         self.visualizer.visualize_predictions(
             data_loader=prediction_loader,
             model=self.model,
-            save_dir=vis_save_dir,
+            save_dir=self.visualize_dir,
             device=self.device,
             use_amp=self.use_amp,
             num_samples_per_class=5,
         )
 
         # Visualize metrics
-        logger.info("\n4. Visualizing training metrics...")
+        logger.info("\n2. Visualizing training metrics...")
         self.visualizer.visualize_metrics(
             metrics=self.metrics,
-            save_dir=vis_save_dir,
+            save_dir=self.visualize_dir,
             data_loader=self.val_loader,
             model=self.model,
             device=self.device,
@@ -349,7 +328,7 @@ class ClassificationTrainer(BaseTrainer):
         )
 
         logger.info("\n" + "=" * 50)
-        logger.info(f"All visualizations saved to: {vis_save_dir}")
+        logger.info(f"All visualizations saved to: {self.visualize_dir}")
         logger.info("=" * 50)
 
     def get_root_dir_path(self) -> Path:
@@ -358,8 +337,9 @@ class ClassificationTrainer(BaseTrainer):
         height = self.cfg.model.height
         width = self.cfg.model.width
         epochs = self.cfg.train.epochs
+        bs = self.cfg.train.batch_size
         return (
             Path(self.cfg.train.root_dir)
             / self._TASK_TYPE.value
-            / f"{model}_{height}x{width}_{epochs}epochs"
+            / f"{model}_{height}x{width}_{epochs}epochs_{bs}bs"
         )

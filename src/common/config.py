@@ -7,14 +7,7 @@ optimizer and scheduler settings.
 
 from dataclasses import asdict, dataclass, field, fields, is_dataclass
 from pathlib import Path
-from typing import (
-    Any,
-    TypeVar,
-    Union,
-    get_args,
-    get_origin,
-    get_type_hints,
-)
+from typing import Any, TypeVar, Union, get_args, get_origin, get_type_hints
 
 import yaml
 
@@ -53,7 +46,7 @@ class BaseConfig:
 # --- Private recursive helper ---
 
 
-def _from_dict_recursive(cls: type[T], data: dict[str, Any]) -> T:
+def _from_dict_recursive[T: "BaseConfig"](cls: type[T], data: dict[str, Any]) -> T:
     """Recursive builder that correctly handles nested dataclasses."""
     if not is_dataclass(cls):
         raise TypeError(f"{cls} must be a dataclass")
@@ -180,7 +173,7 @@ class BaseTrainingConfig(BaseConfig):
     early_stopping_patience: int | None = 10
 
     # Resume from checkpoint
-    resume: str | None = None
+    resume_from_checkpoint: str | None = None
 
     # Mixed precision
     use_amp: bool = False

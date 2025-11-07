@@ -1,7 +1,7 @@
 # Training hyperparameters
 
-epochs: 100
-batch_size: 12
+epochs: 10
+batch_size: 512
 num_workers: 0
 pin_memory: false
 shuffle: true
@@ -30,8 +30,8 @@ use_amp: false
 # Gradient clipping (null disables)
 gradient_clip: null
 
-# Resume from checkpoint
-resume: null
+# Resume from checkpoint path
+resume_from_checkpoint: output/classification/resnet18_64x64_5epochs_1024bs/checkpoints/best.pth
 
 # Early stopping
 early_stopping_patience: null

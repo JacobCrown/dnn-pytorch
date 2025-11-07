@@ -69,7 +69,7 @@
 # Dropout
 - name: CoarseDropout
   params:
-    p: 0.5
+    p: 0.2
 
 # - name: GridDropout
 #   params:
@@ -84,10 +84,10 @@
 #   params:
 #     p: 0.5
 
-# # Pixel-level transforms
-# - name: RandomBrightnessContrast
-#   params:
-#     p: 0.7
+# Pixel-level transforms
+- name: RandomBrightnessContrast
+  params:
+    p: 0.2
 
 # - name: RandomGamma
 #   params:
@@ -109,7 +109,7 @@
 
 # - name: ToGray
 #   params:
-#     p: 0.5
+#     p: 0.2
 
 # - name: ToSepia
 #   params:
@@ -134,10 +134,10 @@
 #     p: 0.5
 #     mode: 'cv'
 
-# - name: CLAHE
-#   params:
-#     p: 0.5
-#     clip_limit: 4.0
+- name: CLAHE
+  params:
+    p: 0.2
+    clip_limit: 4.0
 
 # # Blur transforms
 # - name: Blur
@@ -184,8 +184,8 @@
 # Noise
 - name: GaussNoise
   params:
-    p: 0.5
-    var_limit: [10.0, 50.0]
+    p: 0.2
+    var_limit: [5.0, 15.0]
 
 # - name: ISONoise
 #   params:
@@ -223,19 +223,19 @@
 #     p: 0.5
 
 # Composition
-# - name: OneOf
-#   params:
-#     p: 0.5
-#     transforms:
-#       - name: MotionBlur
-#         params:
-#           blur_limit: [3, 7]
-#       - name: MedianBlur
-#         params:
-#           blur_limit: [3, 7]
-#       - name: GaussianBlur
-#         params:
-#           blur_limit: [3, 7]
+- name: OneOf
+  params:
+    p: 0.5
+    transforms:
+      - name: MotionBlur
+        params:
+          blur_limit: [3, 7]
+      - name: MedianBlur
+        params:
+          blur_limit: [3, 7]
+      - name: GaussianBlur
+        params:
+          blur_limit: [3, 7]
 
 # Utility transforms
 # - name: Lambda

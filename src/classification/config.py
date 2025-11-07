@@ -19,10 +19,6 @@ class ClassificationModelConfig(BaseConfig):
     in_channels: int = 3
     pretrained: bool = True
     dropout: float = 0.2
-    freeze_backbone: bool = False
-    freeze_layers: list[str] = field(default_factory=list)
-    unfreeze_layers: list[str] = field(default_factory=list)
-    partial_bn: bool = False
     width: int = 224
     height: int = 224
 

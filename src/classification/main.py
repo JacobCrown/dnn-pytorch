@@ -10,7 +10,7 @@ from torchinfo import summary
 
 from src.classification.config import ClassificationConfig
 from src.classification.dataset import ClassificationDataset
-from src.classification.model_loader import get_model
+from src.classification.model_manager import ClassificationModelManager
 from src.classification.trainer import ClassificationTrainer
 from src.common.augmentations import get_augmentations
 from src.common.data_utils import create_data_loaders
@@ -39,12 +39,17 @@ def main(cfg: DictConfig) -> None:
     # ---------------------------------------------------------------------
     # Seed & device
     # ---------------------------------------------------------------------
-    # Experiment block optional; default seed=42
     set_seed()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info("Device: %s", device)
 
-    model, data_preproc = get_model(config.model)
+    # ---------------------------------------------------------------------
+    # Model and data preprocessing
+    # ---------------------------------------------------------------------
+    classification_model_manager = ClassificationModelManager(config.model)
+    model = classification_model_manager.model
+    data_preproc = classification_model_manager.preprocessing
+
     model.to(device)
     logger.info(
         "Model summary:\n%s",
@@ -57,6 +62,7 @@ def main(cfg: DictConfig) -> None:
                 config.model.width,
             ),
             col_names=("input_size", "output_size", "num_params", "trainable"),
+            verbose=0,
         ),
     )
 
@@ -156,7 +162,7 @@ def main(cfg: DictConfig) -> None:
     # ---------------------------------------------------------------------
 
     trainer = ClassificationTrainer(
-        model=model,
+        model_manager=classification_model_manager,
         train_loader=train_loader,
         val_loader=val_loader,
         test_loader=test_loader,
@@ -168,23 +174,10 @@ def main(cfg: DictConfig) -> None:
     )
 
     # ---------------------------------------------------------------------
-    # Resume from checkpoint if provided
-    # ---------------------------------------------------------------------
-    resume_path = config.train.resume
-    if resume_path:
-        logger.info("Resuming training from %s", resume_path)
-        trainer.load_checkpoint(resume_path)
-
-    # ---------------------------------------------------------------------
     # Train
     # ---------------------------------------------------------------------
     logger.info("Starting training for %d epochs", config.train.epochs)
     trainer.train()
-
-    # ---------------------------------------------------------------------
-    # Visualizations
-    # ---------------------------------------------------------------------
-    trainer.visualize()
 
 
 if __name__ == "__main__":

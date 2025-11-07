@@ -1,0 +1,3 @@
+from src.classification.model_manager import ClassificationModelManager
+
+ONE_OF_MODEL_MANAGER_CONFIG = ClassificationModelManager

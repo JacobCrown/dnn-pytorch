@@ -60,7 +60,7 @@ dnn-train-segmentation = "src.segmentation.main:main"
 line-length = 88
 target-version = "py313"
 exclude = [
-  "src/segmentation/**",
+  "src/object_detection/**",
 ]
 
 [tool.ruff.lint]
