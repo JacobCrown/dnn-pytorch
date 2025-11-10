@@ -2,9 +2,13 @@
 
 import logging
 from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Self
 
 import albumentations as A
 import torch.nn as nn
+
+from src.common.utils import DEVICE
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +18,13 @@ class BaseModelManager(ABC):
 
     def __init__(self):
         """Initialize the base model manager."""
-        self.model = self.create_model()
+        self.model = self.create_model().to(DEVICE)
         self.preprocessing = self.create_preprocessing()
+
+    @property
+    @abstractmethod
+    def model_cfg(self):
+        pass
 
     @abstractmethod
     def create_model(self) -> nn.Module:
@@ -36,4 +45,9 @@ class BaseModelManager(ABC):
     @abstractmethod
     def check_model_config(self, config: dict) -> None:
         """Check if the model config is compatible with the current model config."""
+        pass
+
+    @classmethod
+    @abstractmethod
+    def from_checkpoint_path(cls, checkpoint_path: Path) -> Self:
         pass

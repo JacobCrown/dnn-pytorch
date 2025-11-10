@@ -15,6 +15,7 @@ from src.classification.metrics import ClassificationMetrics
 from src.classification.model_manager import ClassificationModelManager
 from src.classification.visualizer import ClassificationVisualizer
 from src.common.enums import TaskType
+from src.common.utils import DEVICE
 from src.core.trainer import BaseTrainer
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,6 @@ class ClassificationTrainer(BaseTrainer):
         val_loader: DataLoader,
         cfg: ClassificationConfig,
         test_loader: DataLoader | None = None,
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
     ):
         self.cfg: ClassificationConfig = cfg
         super().__init__(
@@ -49,7 +49,6 @@ class ClassificationTrainer(BaseTrainer):
             val_loader=val_loader,
             cfg=cfg.train,
             test_loader=test_loader,
-            device=device,
         )
 
     def train_epoch(self) -> tuple[float, float]:
@@ -66,10 +65,10 @@ class ClassificationTrainer(BaseTrainer):
         pbar = tqdm(self.train_loader, desc=f"Epoch {self.current_epoch + 1}")
 
         for _, (data, target) in enumerate(pbar):
-            data, target = data.to(self.device), target.to(self.device)
+            data, target = data.to(DEVICE), target.to(DEVICE)
 
             self.optimizer.zero_grad(set_to_none=True)
-            with autocast(device_type=self.device, enabled=self.use_amp):
+            with autocast(device_type=DEVICE, enabled=self.use_amp):
                 output = self.model(data)
                 loss = self.criterion(output, target)
 
@@ -119,20 +118,20 @@ class ClassificationTrainer(BaseTrainer):
 
         with torch.inference_mode():
             for data, target in tqdm(self.val_loader, desc="Validation"):
-                data, target = data.to(self.device), target.to(self.device)
+                data, target = data.to(DEVICE), target.to(DEVICE)
 
                 # Handle mixup/cutmix labels
                 if isinstance(target, tuple):
                     labels, _, _ = target
-                    labels = labels.to(self.device)
-                    with autocast(device_type=self.device, enabled=self.use_amp):
+                    labels = labels.to(DEVICE)
+                    with autocast(device_type=DEVICE, enabled=self.use_amp):
                         output = self.model(data)
                         loss = self.criterion(output, labels)
                     pred = output.argmax(dim=1, keepdim=True)
                     correct += pred.eq(labels.view_as(pred)).sum().item()
                     total += labels.size(0)
                 else:
-                    with autocast(device_type=self.device, enabled=self.use_amp):
+                    with autocast(device_type=DEVICE, enabled=self.use_amp):
                         output = self.model(data)
                         loss = self.criterion(output, target)
                     pred = output.argmax(dim=1, keepdim=True)
@@ -226,9 +225,9 @@ class ClassificationTrainer(BaseTrainer):
 
         with torch.inference_mode():
             for data, target in tqdm(test_loader, desc="Evaluating"):
-                data, target = data.to(self.device), target.to(self.device)
+                data, target = data.to(DEVICE), target.to(DEVICE)
 
-                with autocast(device_type=self.device, enabled=self.use_amp):
+                with autocast(device_type=DEVICE, enabled=self.use_amp):
                     output = self.model(data)
                     loss = self.criterion(output, target)
 
@@ -256,8 +255,8 @@ class ClassificationTrainer(BaseTrainer):
         all_targets: list[int] = []
         with torch.inference_mode():
             for data, target in tqdm(data_loader, desc="Predict"):
-                data = data.to(self.device)
-                with autocast(device_type=self.device, enabled=self.use_amp):
+                data = data.to(DEVICE)
+                with autocast(device_type=DEVICE, enabled=self.use_amp):
                     output = self.model(data)
                     pred = output.argmax(dim=1)
                 all_predictions.extend(pred.cpu().tolist())
@@ -311,7 +310,6 @@ class ClassificationTrainer(BaseTrainer):
             data_loader=prediction_loader,
             model=self.model,
             save_dir=self.visualize_dir,
-            device=self.device,
             use_amp=self.use_amp,
             num_samples_per_class=5,
         )
@@ -321,9 +319,17 @@ class ClassificationTrainer(BaseTrainer):
         self.visualizer.visualize_metrics(
             metrics=self.metrics,
             save_dir=self.visualize_dir,
-            data_loader=self.val_loader,
+            data_loader=prediction_loader,
             model=self.model,
-            device=self.device,
+            use_amp=self.use_amp,
+        )
+
+        # Visualize per class metrics
+        logger.info("\n3. Visualizing per class metrics...")
+        self.visualizer.visualize_per_class_metrics(
+            save_dir=self.visualize_dir,
+            data_loader=prediction_loader,
+            model=self.model,
             use_amp=self.use_amp,
         )
 
@@ -338,8 +344,11 @@ class ClassificationTrainer(BaseTrainer):
         width = self.cfg.model.width
         epochs = self.cfg.train.epochs
         bs = self.cfg.train.batch_size
+        dataset_path = Path(self.cfg.data.root)
+        dataset_name = dataset_path.name
         return (
             Path(self.cfg.train.root_dir)
             / self._TASK_TYPE.value
+            / dataset_name
             / f"{model}_{height}x{width}_{epochs}epochs_{bs}bs"
         )

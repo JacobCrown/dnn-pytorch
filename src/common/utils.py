@@ -11,6 +11,8 @@ import torch
 
 logger = logging.getLogger(__name__)
 
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
 
 def set_seed(seed: int = 42) -> None:
     """Set random seed for reproducibility.
@@ -67,7 +69,7 @@ def get_opencv_interpolation_flag(name: str) -> int:
         "linear": cv2.INTER_LINEAR,
         "bilinear": cv2.INTER_LINEAR,
         "area": cv2.INTER_AREA,
-        "cubic": cv2.INTER_CUBIC,
+        "bicubic": cv2.INTER_CUBIC,
         "lanczos": cv2.INTER_LANCZOS4,
     }
     result = mapping.get(name.lower())

@@ -16,6 +16,7 @@ from tqdm import tqdm
 
 from src.classification.dataset import ClassificationDataset
 from src.common.enums import TaskType
+from src.common.utils import DEVICE
 from src.core.metrics import BaseMetrics
 from src.core.visualizer import BaseVisualizer
 
@@ -365,7 +366,6 @@ class ClassificationVisualizer(BaseVisualizer):
         data_loader: DataLoader,
         model: nn.Module | None = None,
         save_dir: Path | None = None,
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
         use_amp: bool = False,
         num_samples_per_class: int | None = None,
         num_cols: int | None = None,
@@ -383,7 +383,7 @@ class ClassificationVisualizer(BaseVisualizer):
         if not isinstance(dataset, ClassificationDataset):
             raise ValueError("Dataset must be a ClassificationDataset")
 
-        model = model.to(device)
+        model = model.to(DEVICE)
         model.eval()
 
         class_names = dataset.get_class_names()
@@ -409,12 +409,12 @@ class ClassificationVisualizer(BaseVisualizer):
 
         with torch.inference_mode():
             for data, target in tqdm(data_loader, desc="Collecting predictions"):
-                data = data.to(device)
+                data = data.to(DEVICE)
 
                 if isinstance(target, tuple):
                     target = target[0]
 
-                with autocast(device_type=device, enabled=use_amp):
+                with autocast(device_type=DEVICE, enabled=use_amp):
                     output = model(data)
                     pred = output.argmax(dim=1)
 
@@ -553,7 +553,6 @@ class ClassificationVisualizer(BaseVisualizer):
         save_dir: Path | None = None,
         data_loader: DataLoader | None = None,
         model: nn.Module | None = None,
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
         use_amp: bool = False,
         figsize_curves: tuple[float, float] = (12, 5),
         figsize_cm: tuple[float, float] | None = None,
@@ -584,12 +583,109 @@ class ClassificationVisualizer(BaseVisualizer):
                     figsize_cm = (cm_size, cm_size * 0.9)
 
                 ClassificationVisualizer._plot_confusion_matrix(
-                    data_loader, model, save_dir, device, use_amp, figsize_cm
+                    data_loader, model, save_dir, use_amp, figsize_cm
                 )
         else:
             logger.info("Skipping confusion matrix (requires data_loader and model)")
 
         logger.info(f"All metrics visualizations saved to {save_dir}")
+
+    @staticmethod
+    def visualize_per_class_metrics(
+        data_loader: DataLoader,
+        model: nn.Module,
+        save_dir: Path,
+        use_amp: bool = False,
+        figsize: tuple[float, float] | None = None,
+    ) -> None:
+        """Visualize per-class accuracy as a bar plot.
+
+        Args:
+            data_loader: DataLoader for evaluation.
+            model: The model to evaluate.
+            save_dir: Directory to save the plot.
+            use_amp: Whether to use automatic mixed precision.
+            figsize: Figure size (auto-calculated if None).
+        """
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        dataset = data_loader.dataset
+        if not isinstance(dataset, ClassificationDataset):
+            raise ValueError("Dataset must be a ClassificationDataset")
+
+        model = model.to(DEVICE)
+        model.eval()
+
+        all_predictions: list[int] = []
+        all_targets: list[int] = []
+
+        with torch.inference_mode():
+            for data, target in tqdm(data_loader, desc="Evaluating"):
+                data, target = data.to(DEVICE), target.to(DEVICE)
+
+                with autocast(device_type=DEVICE, enabled=use_amp):
+                    output = model(data)
+
+                pred = output.argmax(dim=1, keepdim=True)
+
+                all_predictions.extend(pred.cpu().numpy().flatten())
+                all_targets.extend(target.cpu().numpy())
+
+        class_names = dataset.get_class_names()
+        cm = confusion_matrix(
+            all_targets, all_predictions, labels=np.arange(len(class_names))
+        )
+        num_classes = len(class_names)
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            per_class_acc = cm.diagonal() / cm.sum(axis=1)
+            per_class_acc[np.isnan(per_class_acc)] = 0.0
+        per_class_acc *= 100.0
+
+        if figsize is None:
+            bar_width = max(12, num_classes * 0.4)
+            bar_width = min(bar_width, 40)
+            figsize = (bar_width, 8)
+
+        fig, ax = plt.subplots(figsize=figsize)
+        colors = sns.color_palette("viridis", num_classes)
+        bars = ax.bar(range(num_classes), per_class_acc, color=colors)
+
+        ax.set_ylabel("Accuracy (%)", fontsize=12)
+        ax.set_ylim(0, 105)
+        ax.set_title("Per-Class Accuracy", fontsize=14, fontweight="bold")
+        ax.grid(axis="y", alpha=0.3)
+        ax.set_xticks(range(num_classes))
+
+        if num_classes > 70:
+            tick_fontsize = 4
+        elif num_classes > 50:
+            tick_fontsize = 5
+        elif num_classes > 30:
+            tick_fontsize = 6
+        else:
+            tick_fontsize = 8
+
+        ax.set_xticklabels(class_names, rotation=90, ha="right", fontsize=tick_fontsize)
+
+        if num_classes <= 30:
+            for bar in bars:
+                height = bar.get_height()
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2.0,
+                    height,
+                    f"{height:.1f}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=tick_fontsize - 1 if tick_fontsize > 4 else 4,
+                )
+
+        plt.tight_layout()
+        save_path = save_dir / "per_class_accuracy.png"
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close()
+
+        logger.info(f"Per-class accuracy plot saved to {save_path}")
 
     @staticmethod
     def _plot_loss_curves(
@@ -645,7 +741,6 @@ class ClassificationVisualizer(BaseVisualizer):
         data_loader: DataLoader,
         model: nn.Module,
         save_dir: Path,
-        device: str,
         use_amp: bool,
         figsize: tuple[float, float],
     ) -> None:
@@ -654,7 +749,7 @@ class ClassificationVisualizer(BaseVisualizer):
         if not isinstance(dataset, ClassificationDataset):
             raise ValueError("Dataset must be a ClassificationDataset")
 
-        model = model.to(device)
+        model = model.to(DEVICE)
         model.eval()
 
         all_predictions = []
@@ -662,12 +757,12 @@ class ClassificationVisualizer(BaseVisualizer):
 
         with torch.inference_mode():
             for data, target in tqdm(data_loader, desc="Computing confusion matrix"):
-                data = data.to(device)
+                data = data.to(DEVICE)
 
                 if isinstance(target, tuple):
                     target = target[0]
 
-                with autocast(device_type=device, enabled=use_amp):
+                with autocast(device_type=DEVICE, enabled=use_amp):
                     output = model(data)
                     pred = output.argmax(dim=1)
 

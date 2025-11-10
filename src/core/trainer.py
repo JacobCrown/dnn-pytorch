@@ -11,8 +11,9 @@ from torch.utils.tensorboard import SummaryWriter
 
 from src.common.config import BaseTrainingConfig
 from src.common.enums import TaskType
-from src.common.types import ONE_OF_MODEL_MANAGER_CONFIG
+from src.common.utils import DEVICE
 from src.core.metrics import BaseMetrics
+from src.core.model_manager import BaseModelManager
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class BaseTrainer(ABC):
 
     def __init__(
         self,
-        model_manager: ONE_OF_MODEL_MANAGER_CONFIG,
+        model_manager: BaseModelManager,
         criterion: nn.Module,
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler._LRScheduler,
@@ -33,7 +34,6 @@ class BaseTrainer(ABC):
         val_loader: DataLoader,
         cfg: BaseTrainingConfig,
         test_loader: DataLoader | None = None,
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
     ):
         """Initialize the trainer.
 
@@ -46,15 +46,13 @@ class BaseTrainer(ABC):
             scheduler: Learning rate scheduler (optional)
             train_cfg: Training configuration
             test_loader: Test data loader (optional)
-            device: Device to train on
         """
 
-        self.model_manager: ONE_OF_MODEL_MANAGER_CONFIG = model_manager
-        self.model: nn.Module = self.model_manager.model.to(device)
+        self.model_manager: BaseModelManager = model_manager
+        self.model: nn.Module = self.model_manager.model.to(DEVICE)
         self.train_loader: DataLoader = train_loader
         self.val_loader: DataLoader = val_loader
         self.test_loader: DataLoader | None = test_loader
-        self.device: str = device
         self.train_cfg: BaseTrainingConfig = cfg
         self.root_dir: Path = self.get_root_dir_path()
         self.checkpoints_dir: Path = self.root_dir / self.train_cfg.checkpoints_dir
@@ -85,7 +83,7 @@ class BaseTrainer(ABC):
         # Mixed precision
         self.use_amp: bool = self.train_cfg.use_amp
         self.grad_clip: float | None = self.train_cfg.gradient_clip
-        self.scaler: GradScaler = GradScaler(device=self.device, enabled=self.use_amp)
+        self.scaler: GradScaler = GradScaler(device=DEVICE, enabled=self.use_amp)
 
         # Setup logging
         self.writer: SummaryWriter = SummaryWriter(self.log_dir)
@@ -161,7 +159,7 @@ class BaseTrainer(ABC):
         try:
             # Try to load the checkpoint to see if it's valid
             checkpoint = torch.load(
-                str(filepath), map_location=self.device, weights_only=False
+                str(filepath), map_location=DEVICE, weights_only=False
             )
 
             # Check if essential keys are present
@@ -247,7 +245,7 @@ class BaseTrainer(ABC):
         try:
             # Use weights_only=False explicitly since we trust our own checkpoints
             checkpoint = torch.load(
-                str(filepath), map_location=self.device, weights_only=False
+                str(filepath), map_location=DEVICE, weights_only=False
             )
         except Exception as e:
             raise ValueError(f"Error loading checkpoint {filepath}: {e}") from e

@@ -1,15 +1,17 @@
 """Utility to construct and optionally freeze timm models from Hydra config."""
 
 import logging
+from pathlib import Path
 
 import albumentations as A
 import timm
+import torch
 import torch.nn as nn
 from albumentations.pytorch import ToTensorV2
 from timm.data.config import resolve_data_config
 
 from src.classification.config import ClassificationModelConfig
-from src.common.utils import get_opencv_interpolation_flag
+from src.common.utils import DEVICE, get_opencv_interpolation_flag
 from src.core.model_manager import BaseModelManager
 
 logger = logging.getLogger(__name__)
@@ -20,8 +22,12 @@ class ClassificationModelManager(BaseModelManager):
 
     def __init__(self, cfg: ClassificationModelConfig):
         """Initialize the classification model."""
-        self.model_cfg = cfg
+        self._model_cfg = cfg
         super().__init__()
+
+    @property
+    def model_cfg(self) -> ClassificationModelConfig:
+        return self._model_cfg
 
     def create_model(self) -> nn.Module:
         return timm.create_model(
@@ -39,7 +45,9 @@ class ClassificationModelManager(BaseModelManager):
         mean = data_config.get("mean")
         std = data_config.get("std")
         _, h, w = data_config.get("input_size")
-        interpolation = get_opencv_interpolation_flag(data_config.get("interpolation"))
+        _ = get_opencv_interpolation_flag(
+            data_config.get("interpolation")
+        )  # TODO: Interpolation flag gives worse results, Investigate later
         height = self.model_cfg.height
         width = self.model_cfg.width
         if height != h or width != w:
@@ -49,7 +57,7 @@ class ClassificationModelManager(BaseModelManager):
             )
         return A.Compose(
             [
-                A.Resize(height, width, interpolation=interpolation),
+                A.Resize(height, width),
                 A.Normalize(mean=mean, std=std),
                 ToTensorV2(),
             ]
@@ -82,3 +90,13 @@ class ClassificationModelManager(BaseModelManager):
             raise ValueError(
                 f"Trained model config height ({config['height']}) does not match the current model config height ({self.model_cfg.height})"
             )
+
+    @classmethod
+    def from_checkpoint_path(
+        cls, checkpoint_path: Path
+    ) -> "ClassificationModelManager":
+        checkpoint = torch.load(
+            str(checkpoint_path), map_location=DEVICE, weights_only=False
+        )
+        config = ClassificationModelConfig.from_dict(checkpoint["model_config"])
+        return cls(config)

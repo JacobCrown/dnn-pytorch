@@ -4,7 +4,6 @@ from pathlib import Path
 
 import albumentations as A
 import hydra
-import torch
 from omegaconf import DictConfig, OmegaConf
 from torchinfo import summary
 
@@ -19,7 +18,7 @@ from src.common.logging import setup_logging
 from src.common.losses import get_loss_function
 from src.common.optimizers import get_optimizer
 from src.common.schedulers import get_scheduler
-from src.common.utils import set_seed
+from src.common.utils import DEVICE, set_seed
 
 # Note: real log file will be set inside main() after Hydra changes cwd
 logger = setup_logging(__file__)
@@ -40,8 +39,7 @@ def main(cfg: DictConfig) -> None:
     # Seed & device
     # ---------------------------------------------------------------------
     set_seed()
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    logger.info("Device: %s", device)
+    logger.info("Device: %s", DEVICE)
 
     # ---------------------------------------------------------------------
     # Model and data preprocessing
@@ -50,7 +48,6 @@ def main(cfg: DictConfig) -> None:
     model = classification_model_manager.model
     data_preproc = classification_model_manager.preprocessing
 
-    model.to(device)
     logger.info(
         "Model summary:\n%s",
         summary(
@@ -160,7 +157,6 @@ def main(cfg: DictConfig) -> None:
     # ---------------------------------------------------------------------
     # Trainer
     # ---------------------------------------------------------------------
-
     trainer = ClassificationTrainer(
         model_manager=classification_model_manager,
         train_loader=train_loader,
@@ -170,7 +166,6 @@ def main(cfg: DictConfig) -> None:
         optimizer=optimizer,
         scheduler=scheduler,
         cfg=config,
-        device=device,
     )
 
     # ---------------------------------------------------------------------
