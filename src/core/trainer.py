@@ -14,15 +14,17 @@ from src.common.enums import TaskType
 from src.common.utils import DEVICE
 from src.core.metrics import BaseMetrics
 from src.core.model_manager import BaseModelManager
+from src.core.visualizer import BaseVisualizer
 
 logger = logging.getLogger(__name__)
 
 
-class BaseTrainer(ABC):
+class BaseTrainer[VisualizerType: BaseVisualizer, MetricsType: BaseMetrics](ABC):
     """Trainer class for classification models."""
 
     _TASK_TYPE: TaskType = TaskType.UNDEFINED
-    metrics: BaseMetrics = BaseMetrics()
+    metrics_cls: type[MetricsType]
+    visualizer_cls: type[VisualizerType]
 
     def __init__(
         self,
@@ -93,7 +95,12 @@ class BaseTrainer(ABC):
         self.num_epochs: int = self.train_cfg.epochs
 
         # Setup visualizer
-        self.visualizer = self.visualizer(save_dir=self.visualize_dir)
+        self.visualizer: VisualizerType = self.visualizer_cls(
+            save_dir=self.visualize_dir
+        )
+
+        # Setup metrics
+        self.metrics: MetricsType = self.metrics_cls()
 
         # Resume from checkpoint if specified
         if self.resume_from_checkpoint_path:
@@ -290,10 +297,6 @@ class BaseTrainer(ABC):
 
     @abstractmethod
     def evaluate(self):
-        pass
-
-    @abstractmethod
-    def predict_labels(self):
         pass
 
     @abstractmethod

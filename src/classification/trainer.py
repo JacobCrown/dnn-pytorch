@@ -21,12 +21,14 @@ from src.core.trainer import BaseTrainer
 logger = logging.getLogger(__name__)
 
 
-class ClassificationTrainer(BaseTrainer):
+class ClassificationTrainer(
+    BaseTrainer[ClassificationVisualizer, ClassificationMetrics]
+):
     """Trainer class for classification models."""
 
     _TASK_TYPE: TaskType = TaskType.CLASSIFICATION
-    metrics: ClassificationMetrics = ClassificationMetrics()
-    visualizer = ClassificationVisualizer
+    metrics_cls = ClassificationMetrics
+    visualizer_cls = ClassificationVisualizer
 
     def __init__(
         self,
@@ -120,25 +122,15 @@ class ClassificationTrainer(BaseTrainer):
             for data, target in tqdm(self.val_loader, desc="Validation"):
                 data, target = data.to(DEVICE), target.to(DEVICE)
 
-                # Handle mixup/cutmix labels
-                if isinstance(target, tuple):
-                    labels, _, _ = target
-                    labels = labels.to(DEVICE)
-                    with autocast(device_type=DEVICE, enabled=self.use_amp):
-                        output = self.model(data)
-                        loss = self.criterion(output, labels)
-                    pred = output.argmax(dim=1, keepdim=True)
-                    correct += pred.eq(labels.view_as(pred)).sum().item()
-                    total += labels.size(0)
-                else:
-                    with autocast(device_type=DEVICE, enabled=self.use_amp):
-                        output = self.model(data)
-                        loss = self.criterion(output, target)
-                    pred = output.argmax(dim=1, keepdim=True)
-                    correct += pred.eq(target.view_as(pred)).sum().item()
-                    total += target.size(0)
+                with autocast(device_type=DEVICE, enabled=self.use_amp):
+                    output = self.model(data)
+                    loss = self.criterion(output, target)
 
                 total_loss += loss.item()
+
+                pred = output.argmax(dim=1, keepdim=True)
+                correct += pred.eq(target.view_as(pred)).sum().item()
+                total += target.size(0)
 
         avg_loss = total_loss / len(self.val_loader)
         accuracy = 100.0 * correct / total
@@ -220,8 +212,6 @@ class ClassificationTrainer(BaseTrainer):
         total_loss = 0.0
         correct = 0
         total = 0
-        all_predictions = []
-        all_targets = []
 
         with torch.inference_mode():
             for data, target in tqdm(test_loader, desc="Evaluating"):
@@ -237,9 +227,6 @@ class ClassificationTrainer(BaseTrainer):
 
                 total_loss += loss.item()
 
-                all_predictions.extend(pred.cpu().numpy().flatten())
-                all_targets.extend(target.cpu().numpy())
-
         accuracy = 100.0 * correct / total
         avg_loss = total_loss / len(test_loader)
 
@@ -248,23 +235,6 @@ class ClassificationTrainer(BaseTrainer):
         logger.info(f"  Accuracy: {accuracy:.2f}%")
         logger.info(f"  Correct: {correct}/{total}")
 
-    def predict_labels(self, data_loader: DataLoader) -> tuple[list[int], list[int]]:
-        """Return true and predicted labels for a loader (CPU lists)."""
-        self.model.eval()
-        all_predictions: list[int] = []
-        all_targets: list[int] = []
-        with torch.inference_mode():
-            for data, target in tqdm(data_loader, desc="Predict"):
-                data = data.to(DEVICE)
-                with autocast(device_type=DEVICE, enabled=self.use_amp):
-                    output = self.model(data)
-                    pred = output.argmax(dim=1)
-                all_predictions.extend(pred.cpu().tolist())
-                if isinstance(target, tuple):
-                    target = target[0]
-                all_targets.extend(target.cpu().tolist())
-        return all_targets, all_predictions
-
     def visualize_pre_train(self) -> None:
         """Visualize all aspects of training.
 
@@ -272,7 +242,7 @@ class ClassificationTrainer(BaseTrainer):
         - Example images (with and without augmentations)
         - Data distribution
         """
-        logger.info("\n" + "=" * 50)
+        logger.info("=" * 50)
         logger.info("GENERATING PRE-TRAIN VISUALIZATIONS")
         logger.info("=" * 50)
 
@@ -296,7 +266,7 @@ class ClassificationTrainer(BaseTrainer):
         - Model predictions
         - Training metrics (loss, accuracy, confusion matrix)
         """
-        logger.info("\n" + "=" * 50)
+        logger.info("=" * 50)
         logger.info("GENERATING POST-TRAIN VISUALIZATIONS")
         logger.info("=" * 50)
         # Visualize predictions (use test set if available, otherwise validation set)

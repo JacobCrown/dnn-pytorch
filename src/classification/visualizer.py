@@ -251,7 +251,6 @@ class ClassificationVisualizer(BaseVisualizer):
         data_distribution = dataset.get_data_distribution()
         class_names = [dist.class_name for dist in data_distribution]
         counts = [dist.count for dist in data_distribution]
-        percentages = [dist.percentage for dist in data_distribution]
 
         num_classes = len(class_names)
 
@@ -261,32 +260,32 @@ class ClassificationVisualizer(BaseVisualizer):
             bar_width = min(bar_width, 30)  # Max width
             figsize = (bar_width, 6)
 
-        # Create figure with two subplots
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+        # Create figure with one subplot
+        fig, ax = plt.subplots(1, 1, figsize=figsize)
 
         # Bar plot with counts
         colors = sns.color_palette("husl", len(class_names))
-        bars1 = ax1.bar(range(len(class_names)), counts, color=colors)
-        ax1.set_xlabel("Class", fontsize=12)
-        ax1.set_ylabel("Count", fontsize=12)
-        ax1.set_title("Class Distribution (Counts)", fontsize=14, fontweight="bold")
-        ax1.set_xticks(range(len(class_names)))
+        bars1 = ax.bar(range(len(class_names)), counts, color=colors)
+        ax.set_xlabel("Class", fontsize=12)
+        ax.set_ylabel("Count", fontsize=12)
+        ax.set_title("Class Distribution (Counts)", fontsize=14, fontweight="bold")
+        ax.set_xticks(range(len(class_names)))
 
         # Adjust label size and rotation based on number of classes
         if num_classes > 50:
-            ax1.set_xticklabels(class_names, rotation=90, ha="right", fontsize=6)
+            ax.set_xticklabels(class_names, rotation=90, ha="right", fontsize=6)
         elif num_classes > 30:
-            ax1.set_xticklabels(class_names, rotation=90, ha="right", fontsize=8)
+            ax.set_xticklabels(class_names, rotation=90, ha="right", fontsize=8)
         else:
-            ax1.set_xticklabels(class_names, rotation=45, ha="right", fontsize=10)
+            ax.set_xticklabels(class_names, rotation=45, ha="right", fontsize=10)
 
-        ax1.grid(axis="y", alpha=0.3)
+        ax.grid(axis="y", alpha=0.3)
 
         # Add value labels only if not too many classes
         if num_classes <= 30:
             for bar in bars1:
                 height = bar.get_height()
-                ax1.text(
+                ax.text(
                     bar.get_x() + bar.get_width() / 2.0,
                     height,
                     f"{int(height)}",
@@ -294,33 +293,6 @@ class ClassificationVisualizer(BaseVisualizer):
                     va="bottom",
                     fontsize=8,
                 )
-
-        # Pie chart with percentages
-        if num_classes <= 20:
-            # Show labels for smaller number of classes
-            ax2.pie(
-                percentages,
-                labels=class_names,
-                autopct="%1.1f%%",
-                colors=colors,
-                startangle=90,
-            )
-        else:
-            # No labels for many classes
-            ax2.pie(
-                percentages,
-                autopct="%1.1f%%" if num_classes <= 50 else "",
-                colors=colors,
-                startangle=90,
-            )
-            if num_classes > 20:
-                ax2.text(
-                    0, -1.3, f"Total: {num_classes} classes", ha="center", fontsize=10
-                )
-
-        ax2.set_title(
-            "Class Distribution (Percentages)", fontsize=14, fontweight="bold"
-        )
 
         plt.tight_layout()
         save_path = self.save_dir / "data_distribution.png"
