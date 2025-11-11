@@ -1,22 +1,30 @@
 """Dataset for segmentation tasks."""
 
-from pathlib import Path
 import logging
+from dataclasses import dataclass
+from pathlib import Path
 
 import albumentations as A
-import torch
 import numpy as np
+import torch
 
 from src.common.enums import TaskType
 from src.core.dataset import BaseDataset
 from src.segmentation.config import ClassConfig
 
-
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class DataDistribution:
+    class_name: str
+    count: int
+    percentage: float
+
 
 class SegmentationDataset(BaseDataset):
     """A PyTorch Dataset for image segmentation tasks.
-    
+
     This dataset expects a directory structure where images and masks are paired:
     data_root/
     ├── train/
@@ -59,7 +67,9 @@ class SegmentationDataset(BaseDataset):
     ):
         self.mask_extensions = mask_extensions
         self.class_config = class_config
-        self.rgb_to_idx = {tuple(c.pixel_value): idx for idx, c in enumerate(class_config)}
+        self.rgb_to_idx = {
+            tuple(c.pixel_value): idx for idx, c in enumerate(class_config)
+        }
         self.idx_to_name = {idx: c.name for idx, c in enumerate(class_config)}
         self.lookup_table = self._create_lookup_table()
 
@@ -74,7 +84,7 @@ class SegmentationDataset(BaseDataset):
     def _create_lookup_table(self) -> np.ndarray:
         """Create a lookup table for efficient mask conversion."""
         max_id = 0
-        for color in self.rgb_to_idx.keys():
+        for color in self.rgb_to_idx:
             color_id = color[0] * 256**2 + color[1] * 256 + color[2]
             if color_id > max_id:
                 max_id = color_id
@@ -84,7 +94,7 @@ class SegmentationDataset(BaseDataset):
         for color, class_id in self.rgb_to_idx.items():
             color_id = color[0] * 256**2 + color[1] * 256 + color[2]
             lut[color_id] = class_id
-            
+
         return lut
 
     def _convert_pixel_mask_to_class_mask(self, mask: np.ndarray) -> np.ndarray:
@@ -134,8 +144,10 @@ class SegmentationDataset(BaseDataset):
             mask_file = masks_dir / f"{image_file.stem}{mask_ext}"
             if mask_file.exists():
                 return mask_file
-        
-        logger.warning(f"No mask found for image with exact name match: {image_file.stem}")
+
+        logger.warning(
+            f"No mask found for image with exact name match: {image_file.stem}"
+        )
         return None
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
@@ -152,7 +164,7 @@ class SegmentationDataset(BaseDataset):
 
         image = self._load_image(image_path)
         mask_rgb = self._load_image(mask_path)
-        
+
         # Convert RGB mask to class indices
         mask = self._convert_pixel_mask_to_class_mask(mask_rgb)
 
@@ -175,3 +187,36 @@ class SegmentationDataset(BaseDataset):
             List of class names
         """
         return [self.idx_to_name[i] for i in range(len(self.class_config))]
+
+    def get_data_distribution(self) -> list[DataDistribution]:
+        """
+        Get the class pixel distribution across the dataset.
+
+        Returns:
+            List[DataDistribution]: For each class, shows the absolute pixel count and
+            the percentage of pixels (across all masks) belonging to that class.
+        """
+        # Initialize per-class pixel counters
+        num_classes = len(self.get_class_names())
+        pixel_counts = [0] * num_classes
+        total_pixels = 0
+
+        for _, mask_path in self.samples:
+            mask_rgb = self._load_image(mask_path)
+            mask = self._convert_pixel_mask_to_class_mask(mask_rgb)
+            # mask shape: (H, W)
+            flat_mask = mask.flatten()
+            total_pixels += flat_mask.size
+            for class_idx in range(num_classes):
+                pixel_counts[class_idx] += np.sum(flat_mask == class_idx)
+
+        data_distribution = []
+        for class_idx, class_name in enumerate(self.get_class_names()):
+            count = pixel_counts[class_idx]
+            percentage = (count / total_pixels) * 100 if total_pixels > 0 else 0
+            data_distribution.append(
+                DataDistribution(
+                    class_name=class_name, count=count, percentage=percentage
+                )
+            )
+        return data_distribution

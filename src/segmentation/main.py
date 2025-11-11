@@ -5,22 +5,21 @@ from pathlib import Path
 
 import albumentations as A
 import hydra
-import torch
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
 from torchinfo import summary
 
-from src.segmentation.config import SegmentationConfig
-from src.segmentation.dataset import SegmentationDataset
-from src.segmentation.trainer import SegmentationTrainer
 from src.common.augmentations import get_augmentations
+from src.common.data_utils import create_data_loaders
 from src.common.exceptions import DataLoaderException
 from src.common.logging import setup_logging
 from src.common.losses import get_loss_function
-from src.segmentation.model_loader import get_model
 from src.common.optimizers import get_optimizer
 from src.common.schedulers import get_scheduler
-from src.common.utils import set_seed
-from src.common.data_utils import create_data_loaders
+from src.common.utils import DEVICE, set_seed
+from src.segmentation.config import SegmentationConfig
+from src.segmentation.dataset import SegmentationDataset
+from src.segmentation.model_manager import SegmentationModelManager
+from src.segmentation.trainer import SegmentationTrainer
 
 # Note: real log file will be set inside main() after Hydra changes cwd
 logger = setup_logging(__file__)
@@ -28,25 +27,29 @@ logger = setup_logging(__file__)
 
 @hydra.main(
     version_base=None,
-    config_path="../../configs",
-    config_name="segmentation/main.yaml",
+    config_path="../../configs/segmentation",
+    config_name="main.yaml",
 )
-def main(cfg: DictConfig) -> None:
+def main(cfg: dict) -> None:
+    # ---------------------------------------------------------------------
     # Load config
-    config = SegmentationConfig.from_dict(cfg.segmentation)
+    # ---------------------------------------------------------------------
+    config = SegmentationConfig.from_dict(dict(cfg))
     logging.info("Resolved configuration:\n%s", OmegaConf.to_yaml(cfg, resolve=True))
 
     # ---------------------------------------------------------------------
     # Seed & device
     # ---------------------------------------------------------------------
-    # Experiment block optional; default seed=42
     set_seed()
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    logger.info("Device: %s", device)
+    logger.info("Device: %s", DEVICE)
 
+    # ---------------------------------------------------------------------
+    # Model and data preprocessing
+    # ---------------------------------------------------------------------
+    segmentation_model_manager = SegmentationModelManager(config.model)
+    model = segmentation_model_manager.model
+    data_preproc = segmentation_model_manager.preprocessing
 
-    model, data_preproc = get_model(config.model)
-    model.to(device)
     logger.info(
         "Model summary:\n%s",
         summary(
@@ -58,6 +61,7 @@ def main(cfg: DictConfig) -> None:
                 config.model.width,
             ),
             col_names=("input_size", "output_size", "num_params", "trainable"),
+            verbose=0,
         ),
     )
 
@@ -65,8 +69,8 @@ def main(cfg: DictConfig) -> None:
     # Augmentations + Preprocessing
     # ---------------------------------------------------------------------
     logger.info("Building augmentation and preprocessing pipelines…")
-    # Rebuild using augmentations but avoid duplicate ToTensorV2
-    train_augs = get_augmentations(config.augmentations, append_to_tensor=False)
+
+    train_augs = get_augmentations(config.augmentations)
 
     train_transforms = A.Compose(train_augs.transforms + data_preproc.transforms)
     logger.info("Train transforms: %s", train_transforms)
@@ -121,7 +125,24 @@ def main(cfg: DictConfig) -> None:
     if test_loader is None:
         logger.warning("No test loader found, skipping final evaluation")
 
-    logging.info("Datasets and loaders ready.")
+    data_distribution = train_dataset.get_data_distribution()
+    logger.info("Data distribution:")
+    for data_dist in data_distribution:
+        logger.info(
+            "\t%s: %.2f%% of pixels",
+            data_dist.class_name,
+            data_dist.percentage,
+        )
+
+    if train_loader is None or val_loader is None:
+        logger.error("No train or val loader found")
+        raise DataLoaderException(
+            "Cannot continue training without train and val data loaders"
+        )
+    if test_loader is None:
+        logger.warning("No test loader found, skipping final evaluation")
+
+    logger.info("Datasets and loaders ready.")
     logger.info("\tTrain samples: %d", len(train_dataset))
     logger.info("\tVal samples: %d", len(val_dataset))
     if test_dataset is not None:
@@ -130,19 +151,20 @@ def main(cfg: DictConfig) -> None:
     # ---------------------------------------------------------------------
     # Model
     # ---------------------------------------------------------------------
-    logging.info(
+    logger.info(
         "Creating model %s with encoder %s",
         config.model.architecture,
-        config.model.params["encoder_name"],
+        config.model.encoder_name,
     )
-    logging.info(
-        "Model created — total params: %d", sum(p.numel() for p in model.parameters())
+    logger.info(
+        "Model created — total parameters: %d",
+        sum(p.numel() for p in model.parameters()),
     )
 
     # ---------------------------------------------------------------------
     # Optimizer & scheduler
     # ---------------------------------------------------------------------
-    logging.info("Setting up optimizer and scheduler…")
+    logger.info("Setting up optimizer and scheduler…")
     optimizer = get_optimizer(config.train.optimizer, model.parameters())
     scheduler = get_scheduler(config.train.scheduler, optimizer)
 
@@ -155,39 +177,22 @@ def main(cfg: DictConfig) -> None:
     # Trainer
     # ---------------------------------------------------------------------
 
-    num_classes = config.model.classes
     trainer = SegmentationTrainer(
-        model=model,
+        model_manager=segmentation_model_manager,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        test_loader=test_loader,
         criterion=criterion,
         optimizer=optimizer,
         scheduler=scheduler,
-        train_loader=train_loader,
-        val_loader=val_loader,
         cfg=config,
-        num_classes=num_classes,
-        test_loader=test_loader,
-        device=device,
     )
-
-    # ---------------------------------------------------------------------
-    # Resume from checkpoint if provided
-    # ---------------------------------------------------------------------
-    resume_path = config.train.resume
-    if resume_path:
-        logging.info("Resuming training from %s", resume_path)
-        trainer.load_checkpoint(resume_path)
 
     # ---------------------------------------------------------------------
     # Train
     # ---------------------------------------------------------------------
-    logging.info("Starting training for %d epochs", config.train.epochs)
+    logger.info("Starting training for %d epochs", config.train.epochs)
     trainer.train()
-
-    # ---------------------------------------------------------------------
-    # Visualizations: training curves and predictions on validation set
-    # ---------------------------------------------------------------------
-    logging.info("Generating visualizations…")
-    trainer.visualize()
 
 
 if __name__ == "__main__":

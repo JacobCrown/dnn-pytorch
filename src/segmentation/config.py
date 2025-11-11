@@ -1,11 +1,7 @@
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from src.common.config import (
-    AugmentationConfig,
-    BaseConfig,
-    BaseTrainingConfig,
-)
+from src.common.config import AugmentationConfig, BaseConfig, BaseTrainingConfig
 
 
 @dataclass
@@ -13,7 +9,7 @@ class ClassConfig(BaseConfig):
     """Configuration for the segmentation dataset."""
 
     name: str = "class_name"
-    pixel_value: List[int] = field(default_factory=list)
+    pixel_value: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -23,13 +19,13 @@ class SegmentationDataConfig(BaseConfig):
     root: str = "data/segmentation"
     train_dir: str = "train"
     val_dir: str = "val"
-    test_dir: Optional[str] = None
-    extensions: List[str] = field(
+    test_dir: str | None = None
+    extensions: list[str] = field(
         default_factory=lambda: [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
     )
-    mask_extensions: List[str] = field(default_factory=lambda: [".png"])
-    max_samples: Optional[int] = None
-    class_config: List[ClassConfig] = field(default_factory=list)
+    mask_extensions: list[str] = field(default_factory=lambda: [".png"])
+    max_samples: int | None = None
+    class_config: list[ClassConfig] = field(default_factory=list)
 
 
 @dataclass
@@ -37,11 +33,13 @@ class SegmentationModelConfig(BaseConfig):
     """Configuration for the segmentation model."""
 
     architecture: str = "Unet"
+    encoder_name: str = "resnet18"
+    encoder_weights: str = "imagenet"
     height: int = 224
     width: int = 224
     in_channels: int = 3
     classes: int = 2
-    params: Dict[str, Any] = field(default_factory=dict)
+    params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -50,5 +48,5 @@ class SegmentationConfig(BaseConfig):
 
     model: SegmentationModelConfig = field(default_factory=SegmentationModelConfig)
     train: BaseTrainingConfig = field(default_factory=BaseTrainingConfig)
-    augmentations: List[AugmentationConfig] = field(default_factory=list)
+    augmentations: list[AugmentationConfig] = field(default_factory=list)
     data: SegmentationDataConfig = field(default_factory=SegmentationDataConfig)

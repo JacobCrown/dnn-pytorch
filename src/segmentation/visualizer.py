@@ -1,5 +1,6 @@
 """Visualizer for segmentation tasks."""
 
+import logging
 from pathlib import Path
 
 import cv2
@@ -13,9 +14,12 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.common.enums import TaskType
+from src.common.utils import DEVICE
 from src.core.metrics import BaseMetrics
 from src.core.visualizer import BaseVisualizer
 from src.segmentation.dataset import SegmentationDataset
+
+logger = logging.getLogger(__name__)
 
 
 class SegmentationVisualizer(BaseVisualizer):
@@ -24,44 +28,9 @@ class SegmentationVisualizer(BaseVisualizer):
     _TASK_TYPE: TaskType = TaskType.SEGMENTATION
 
     @staticmethod
-    def _denormalize_image(image: np.ndarray) -> np.ndarray:
-        """Denormalize image for visualization.
-
-        Args:
-            image: Normalized image array (C, H, W) in range [0, 1] or normalized
-
-        Returns:
-            Denormalized image array (H, W, C) in range [0, 255]
-        """
-        # Transpose from (C, H, W) to (H, W, C)
-        if image.ndim == 3 and image.shape[0] in [1, 3]:
-            image = np.transpose(image, (1, 2, 0))
-
-        # Convert to uint8 if needed
-        if image.dtype != np.uint8:
-            # Common ImageNet normalization
-            mean = np.array([0.485, 0.456, 0.406])
-            std = np.array([0.229, 0.224, 0.225])
-
-            # Check if image looks normalized (values around 0)
-            if image.min() < 0 or image.max() < 1.5:
-                # Denormalize
-                image = image * std + mean
-
-            # Clip and convert to [0, 255]
-            image = np.clip(image * 255, 0, 255).astype(np.uint8)
-
-        # Handle grayscale
-        if image.ndim == 2 or (image.ndim == 3 and image.shape[2] == 1):
-            squeezed = image.squeeze()
-            converted = cv2.cvtColor(squeezed, cv2.COLOR_GRAY2RGB)  # type: ignore
-            if converted is not None:
-                image = converted
-
-        return image
-
-    @staticmethod
-    def _create_color_map(dataset: SegmentationDataset) -> dict[int, tuple[int, int, int]]:
+    def _create_color_map(
+        dataset: SegmentationDataset,
+    ) -> dict[int, tuple[int, int, int]]:
         """Create a color map from class indices to RGB colors.
 
         Args:
@@ -76,7 +45,9 @@ class SegmentationVisualizer(BaseVisualizer):
         return color_map
 
     @staticmethod
-    def _mask_to_rgb(mask: np.ndarray, color_map: dict[int, tuple[int, int, int]]) -> np.ndarray:
+    def _mask_to_rgb(
+        mask: np.ndarray, color_map: dict[int, tuple[int, int, int]]
+    ) -> np.ndarray:
         """Convert a class mask to an RGB visualization.
 
         Args:
@@ -166,10 +137,9 @@ class SegmentationVisualizer(BaseVisualizer):
 
         return images, masks
 
-    @staticmethod
     def visualize_example_images(
+        self,
         data_loader: DataLoader,
-        save_dir: Path | None = None,
         num_samples: int = 4,
         figsize: tuple[int, int] = (20, 10),
     ) -> None:
@@ -181,14 +151,9 @@ class SegmentationVisualizer(BaseVisualizer):
 
         Args:
             data_loader: DataLoader containing the dataset
-            save_dir: Directory to save visualizations
             num_samples: Number of samples to show
             figsize: Figure size for each plot
         """
-        if save_dir is None:
-            save_dir = Path("visualizations")
-        save_dir.mkdir(parents=True, exist_ok=True)
-
         dataset = data_loader.dataset
         if not isinstance(dataset, SegmentationDataset):
             raise ValueError("Dataset must be a SegmentationDataset")
@@ -211,7 +176,7 @@ class SegmentationVisualizer(BaseVisualizer):
             masks_no_aug,
             color_map,
             "Example Images (No Augmentation)",
-            save_dir / "example_images_no_aug.png",
+            self.save_dir / "example_images_no_aug.png",
             figsize,
         )
 
@@ -221,11 +186,11 @@ class SegmentationVisualizer(BaseVisualizer):
             masks_aug,
             color_map,
             "Example Images (With Augmentation)",
-            save_dir / "example_images_with_aug.png",
+            self.save_dir / "example_images_with_aug.png",
             figsize,
         )
 
-        print(f"Example images saved to {save_dir}")
+        logger.info(f"Example images saved to {self.save_dir}")
 
     @staticmethod
     def _plot_images_with_masks(
@@ -257,7 +222,7 @@ class SegmentationVisualizer(BaseVisualizer):
         for idx in range(num_samples):
             # Denormalize image
             image = SegmentationVisualizer._denormalize_image(images[idx])
-            
+
             # Handle mask - squeeze if it has an extra dimension
             mask = masks[idx]
             if mask.ndim == 3:
@@ -267,7 +232,9 @@ class SegmentationVisualizer(BaseVisualizer):
             mask_rgb = SegmentationVisualizer._mask_to_rgb(mask, color_map)
 
             # Create overlay
-            overlay = SegmentationVisualizer._overlay_mask_on_image(image, mask_rgb, alpha=0.4)
+            overlay = SegmentationVisualizer._overlay_mask_on_image(
+                image, mask_rgb, alpha=0.4
+            )
 
             # Plot original image
             axes[idx, 0].imshow(image)
@@ -288,23 +255,17 @@ class SegmentationVisualizer(BaseVisualizer):
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
 
-    @staticmethod
     def visualize_data_distribution(
+        self,
         data_loader: DataLoader,
-        save_dir: Path | None = None,
         figsize: tuple[int, int] = (14, 8),
     ) -> None:
         """Visualize the distribution of classes based on pixel counts.
 
         Args:
             data_loader: DataLoader containing the dataset
-            save_dir: Directory to save visualizations
             figsize: Figure size for the plot
         """
-        if save_dir is None:
-            save_dir = Path("visualizations")
-        save_dir.mkdir(parents=True, exist_ok=True)
-
         dataset = data_loader.dataset
         if not isinstance(dataset, SegmentationDataset):
             raise ValueError("Dataset must be a SegmentationDataset")
@@ -312,21 +273,21 @@ class SegmentationVisualizer(BaseVisualizer):
         # Count pixels for each class
         class_pixel_counts = {}
         color_map = SegmentationVisualizer._create_color_map(dataset)
-        
+
         # Get class names from the dataset
         class_names = dataset.get_class_names()
-        
+
         # Initialize counters
-        for class_idx in color_map.keys():
+        for class_idx in color_map:
             class_pixel_counts[class_idx] = 0
 
-        print("Computing pixel distribution...")
-        for image_path, mask_path in tqdm(dataset.samples, desc="Processing masks"):
+        logger.info("Computing pixel distribution...")
+        for _image_path, mask_path in tqdm(dataset.samples, desc="Processing masks"):
             mask = cv2.imread(mask_path)
             if mask is not None:
                 mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)  # type: ignore
                 mask = dataset._convert_pixel_mask_to_class_mask(mask)
-                
+
                 # Count pixels for each class
                 unique, counts = np.unique(mask, return_counts=True)
                 for class_idx, count in zip(unique, counts, strict=False):
@@ -336,38 +297,46 @@ class SegmentationVisualizer(BaseVisualizer):
         # Calculate percentages
         total_pixels = sum(class_pixel_counts.values())
         class_percentages = {
-            cls: (count / total_pixels * 100) for cls, count in class_pixel_counts.items()
+            cls: (count / total_pixels * 100)
+            for cls, count in class_pixel_counts.items()
         }
 
         # Sort by pixel count
-        sorted_classes = sorted(class_pixel_counts.items(), key=lambda x: x[1], reverse=True)
-        
+        sorted_classes = sorted(
+            class_pixel_counts.items(), key=lambda x: x[1], reverse=True
+        )
+
         # Filter out classes with very few pixels (< 0.1%)
-        filtered_classes = [(cls, count) for cls, count in sorted_classes 
-                           if class_percentages[cls] >= 0.1]
+        filtered_classes = [
+            (cls, count)
+            for cls, count in sorted_classes
+            if class_percentages[cls] >= 0.1
+        ]
 
         class_indices = [cls for cls, _ in filtered_classes]
         filtered_class_names = [class_names[cls] for cls in class_indices]
         pixel_counts = [count for _, count in filtered_classes]
         percentages = [class_percentages[cls] for cls in class_indices]
 
-        # Create figure with two subplots
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+        # Create figure with one subplot
+        fig, ax = plt.subplots(1, 1, figsize=figsize)
 
         # Bar plot with pixel counts
         colors = sns.color_palette("husl", len(filtered_class_names))
-        bars1 = ax1.barh(range(len(filtered_class_names)), pixel_counts, color=colors)
-        ax1.set_xlabel("Pixel Count", fontsize=12)
-        ax1.set_ylabel("Class", fontsize=12)
-        ax1.set_title("Class Distribution (Pixel Counts)", fontsize=14, fontweight="bold")
-        ax1.set_yticks(range(len(filtered_class_names)))
-        ax1.set_yticklabels(filtered_class_names, fontsize=9)
-        ax1.grid(axis="x", alpha=0.3)
+        bars1 = ax.barh(range(len(filtered_class_names)), pixel_counts, color=colors)
+        ax.set_xlabel("Pixel Count", fontsize=12)
+        ax.set_ylabel("Class", fontsize=12)
+        ax.set_title(
+            "Class Distribution (Pixel Counts)", fontsize=14, fontweight="bold"
+        )
+        ax.set_yticks(range(len(filtered_class_names)))
+        ax.set_yticklabels(filtered_class_names, fontsize=9)
+        ax.grid(axis="x", alpha=0.3)
 
         # Add value labels on bars
-        for i, (bar, pct) in enumerate(zip(bars1, percentages, strict=False)):
+        for _i, (bar, pct) in enumerate(zip(bars1, percentages, strict=False)):
             width = bar.get_width()
-            ax1.text(
+            ax.text(
                 width,
                 bar.get_y() + bar.get_height() / 2.0,
                 f" {pct:.1f}%",
@@ -376,37 +345,17 @@ class SegmentationVisualizer(BaseVisualizer):
                 fontsize=8,
             )
 
-        # Pie chart with percentages (top 10 classes)
-        top_n = min(10, len(percentages))
-        top_indices = np.argsort(percentages)[-top_n:][::-1]
-        top_names = [filtered_class_names[i] for i in top_indices]
-        top_percentages = [percentages[i] for i in top_indices]
-        top_colors = [colors[i] for i in top_indices]
-
-        ax2.pie(
-            top_percentages,
-            labels=top_names,
-            autopct="%1.1f%%",
-            colors=top_colors,
-            startangle=90,
-        )
-        ax2.set_title(
-            f"Top {top_n} Classes (Percentages)", fontsize=14, fontweight="bold"
-        )
-
         plt.tight_layout()
-        save_path = save_dir / "data_distribution.png"
+        save_path = self.save_dir / "data_distribution.png"
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
 
-        print(f"Data distribution plot saved to {save_path}")
+        logger.info(f"Data distribution plot saved to {save_path}")
 
-    @staticmethod
     def visualize_predictions(
+        self,
         data_loader: DataLoader,
-        model: nn.Module | None = None,
-        save_dir: Path | None = None,
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+        model: nn.Module,
         use_amp: bool = False,
         num_samples: int = 4,
         figsize: tuple[int, int] = (20, 10),
@@ -416,24 +365,15 @@ class SegmentationVisualizer(BaseVisualizer):
         Args:
             data_loader: DataLoader to get samples from
             model: Trained model for predictions
-            save_dir: Directory to save visualizations
-            device: Device to run model on
             use_amp: Whether to use automatic mixed precision
             num_samples: Number of samples to visualize
             figsize: Figure size for the plot
         """
-        if model is None:
-            raise ValueError("Model is required for visualizing predictions")
-
-        if save_dir is None:
-            save_dir = Path("visualizations")
-        save_dir.mkdir(parents=True, exist_ok=True)
-
         dataset = data_loader.dataset
         if not isinstance(dataset, SegmentationDataset):
             raise ValueError("Dataset must be a SegmentationDataset")
 
-        model = model.to(device)
+        model = model.to(DEVICE)
         model.eval()
 
         color_map = SegmentationVisualizer._create_color_map(dataset)
@@ -448,10 +388,10 @@ class SegmentationVisualizer(BaseVisualizer):
                 if len(images) >= num_samples:
                     break
 
-                data = data.to(device)
-                target = target.to(device)
+                data = data.to(DEVICE)
+                target = target.to(DEVICE)
 
-                with autocast(device_type=device, enabled=use_amp):
+                with autocast(device_type=DEVICE, enabled=use_amp):
                     output = model(data)
                     pred = output.argmax(dim=1)
 
@@ -516,29 +456,32 @@ class SegmentationVisualizer(BaseVisualizer):
             axes[idx, 3].axis("off")
 
         plt.tight_layout()
-        save_path = save_dir / "predictions.png"
+        save_path = self.save_dir / "predictions.png"
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
 
-        print(f"Predictions visualization saved to {save_path}")
+        logger.info(f"Predictions visualization saved to {save_path}")
 
-        # Calculate and print IoU for visualized samples
+        # Calculate and log IoU for visualized samples
         total_iou = 0.0
         for true_mask, pred_mask in zip(true_masks, pred_masks, strict=False):
             # Calculate IoU for this sample
-            intersection = np.logical_and(true_mask == pred_mask, true_mask != 255).sum()
+            intersection = np.logical_and(
+                true_mask == pred_mask, true_mask != 255
+            ).sum()
             union = (true_mask != 255).sum()
             if union > 0:
                 iou = intersection / union
                 total_iou += iou
 
         avg_iou = total_iou / len(true_masks) if true_masks else 0
-        print(f"Average pixel accuracy on visualized samples: {avg_iou * 100:.2f}%")
+        logger.info(
+            f"Average pixel accuracy on visualized samples: {avg_iou * 100:.2f}%"
+        )
 
-    @staticmethod
     def visualize_metrics(
+        self,
         metrics: BaseMetrics,
-        save_dir: Path | None = None,
         figsize: tuple[int, int] = (12, 5),
     ) -> None:
         """Visualize training metrics.
@@ -549,31 +492,137 @@ class SegmentationVisualizer(BaseVisualizer):
 
         Args:
             metrics: Metrics object with training history (BaseMetrics or subclass)
-            save_dir: Directory to save visualizations
             figsize: Figure size for the plots
         """
-        if save_dir is None:
-            save_dir = Path("visualizations")
-        save_dir.mkdir(parents=True, exist_ok=True)
-
         # Plot 1: Loss curves
-        SegmentationVisualizer._plot_loss_curves(metrics, save_dir, figsize)
+        self._plot_loss_curves(metrics, figsize)
 
         # Plot 2: IoU curves (if available)
         if hasattr(metrics, "ious"):
-            SegmentationVisualizer._plot_iou_curves(metrics, save_dir, figsize)
+            self._plot_iou_curves(metrics, figsize)
 
-        print(f"All metrics visualizations saved to {save_dir}")
+        logger.info(f"All metrics visualizations saved to {self.save_dir}")
 
-    @staticmethod
-    def _plot_loss_curves(
-        metrics: BaseMetrics, save_dir: Path, figsize: tuple[int, int]
+    def visualize_per_class_metrics(
+        self,
+        data_loader: DataLoader,
+        model: nn.Module,
+        use_amp: bool = False,
+        figsize: tuple[float, float] | None = None,
     ) -> None:
+        """Visualize per-class mean Intersection over Union (mIoU).
+
+        Args:
+            data_loader: DataLoader for evaluation.
+            model: The model to evaluate.
+            use_amp: Whether to use automatic mixed precision.
+            figsize: Figure size (auto-calculated if None).
+        """
+        dataset = data_loader.dataset
+        if not isinstance(dataset, SegmentationDataset):
+            raise ValueError("Dataset must be a SegmentationDataset")
+
+        model = model.to(DEVICE)
+        model.eval()
+
+        class_names = dataset.get_class_names()
+        num_classes = len(class_names)
+
+        intersection_per_class = np.zeros(num_classes)
+        union_per_class = np.zeros(num_classes)
+
+        with torch.inference_mode():
+            for data, target in tqdm(data_loader, desc="Evaluating mIoU per class"):
+                data = data.to(DEVICE)
+                target = target.to(DEVICE)
+
+                with autocast(device_type=DEVICE, enabled=use_amp):
+                    output = model(data)
+
+                pred = output.argmax(dim=1)
+
+                # Move to CPU for numpy operations
+                pred_np = pred.cpu().numpy()
+                target_np = target.cpu().numpy()
+
+                for c in range(num_classes):
+                    intersection = np.sum((pred_np == c) & (target_np == c))
+                    union = np.sum((pred_np == c) | (target_np == c))
+                    intersection_per_class[c] += intersection
+                    union_per_class[c] += union
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            iou_per_class = intersection_per_class / union_per_class
+            iou_per_class[np.isnan(iou_per_class)] = 0.0
+
+        # Sort classes by mIoU for better visualization
+        sorted_indices = np.argsort(iou_per_class)[::-1]
+        sorted_iou_per_class = iou_per_class[sorted_indices]
+        sorted_class_names = [class_names[i] for i in sorted_indices]
+
+        # Dynamic figsize for horizontal bar plot
+        if figsize is None:
+            # Adjust height based on number of classes
+            bar_height = max(10, num_classes * 0.35)
+            bar_height = min(bar_height, 50)  # Max height
+            figsize = (12, bar_height)
+
+        fig, ax = plt.subplots(figsize=figsize)
+        colors = sns.color_palette("viridis", num_classes)
+        # mypy doesn't like this, but it's valid
+        sorted_colors = [colors[i] for i in sorted_indices]  # type: ignore
+
+        # Horizontal bar plot
+        bars = ax.barh(range(num_classes), sorted_iou_per_class, color=sorted_colors)
+
+        ax.set_xlabel("Mean IoU", fontsize=12)
+        ax.set_ylabel("Class", fontsize=12)
+        ax.set_xlim(0, 1.05)
+        ax.set_title(
+            "Per-Class Mean Intersection over Union (mIoU)",
+            fontsize=14,
+            fontweight="bold",
+        )
+        ax.grid(axis="x", alpha=0.3)
+        ax.set_yticks(range(num_classes))
+        ax.invert_yaxis()  # Display highest IoU at the top
+
+        # Dynamic font size for y-tick labels
+        if num_classes > 70:
+            tick_fontsize = 4
+        elif num_classes > 50:
+            tick_fontsize = 5
+        elif num_classes > 30:
+            tick_fontsize = 7
+        else:
+            tick_fontsize = 9
+
+        ax.set_yticklabels(sorted_class_names, fontsize=tick_fontsize)
+
+        # Add value labels on bars
+        for bar in bars:
+            width = bar.get_width()
+            ax.text(
+                width + 0.005,
+                bar.get_y() + bar.get_height() / 2,
+                f"{width:.3f}",
+                ha="left",
+                va="center",
+                fontsize=max(4, tick_fontsize - 2),
+            )
+
+        plt.tight_layout()
+        save_path = self.save_dir / "per_class_miou.png"
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close()
+
+        logger.info(f"Per-class mIoU plot saved to {save_path}")
+
+    def _plot_loss_curves(self, metrics: BaseMetrics, figsize: tuple[int, int]) -> None:
         """Plot loss curves.
 
         Args:
             metrics: Metrics object
-            save_dir: Directory to save the plot
             figsize: Figure size
         """
         fig, ax = plt.subplots(figsize=figsize)
@@ -589,21 +638,17 @@ class SegmentationVisualizer(BaseVisualizer):
         ax.grid(True, alpha=0.3)
 
         plt.tight_layout()
-        save_path = save_dir / "loss_curves.png"
+        save_path = self.save_dir / "loss_curves.png"
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
 
-        print(f"Loss curves saved to {save_path}")
+        logger.info(f"Loss curves saved to {save_path}")
 
-    @staticmethod
-    def _plot_iou_curves(
-        metrics: BaseMetrics, save_dir: Path, figsize: tuple[int, int]
-    ) -> None:
+    def _plot_iou_curves(self, metrics: BaseMetrics, figsize: tuple[int, int]) -> None:
         """Plot IoU/mIoU curves.
 
         Args:
             metrics: Metrics object (must have ious attribute)
-            save_dir: Directory to save the plot
             figsize: Figure size
         """
         fig, ax = plt.subplots(figsize=figsize)
@@ -621,9 +666,8 @@ class SegmentationVisualizer(BaseVisualizer):
         ax.grid(True, alpha=0.3)
 
         plt.tight_layout()
-        save_path = save_dir / "iou_curves.png"
+        save_path = self.save_dir / "iou_curves.png"
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
 
-        print(f"IoU curves saved to {save_path}")
-
+        logger.info(f"IoU curves saved to {save_path}")

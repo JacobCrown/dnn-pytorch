@@ -2,49 +2,46 @@
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from sklearn.metrics import classification_report, confusion_matrix
 from torch.amp import autocast  # type: ignore[reportMissingImports]
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.segmentation.metrics import SegmentationMetrics
 from src.common.enums import TaskType
+from src.common.utils import DEVICE
 from src.core.trainer import BaseTrainer
-from src.segmentation.visualizer import SegmentationVisualizer
 from src.segmentation.config import SegmentationConfig
+from src.segmentation.metrics import SegmentationMetrics
+from src.segmentation.model_manager import SegmentationModelManager
+from src.segmentation.visualizer import SegmentationVisualizer
 
 logger = logging.getLogger(__name__)
 
 
-class SegmentationTrainer(BaseTrainer):
+class SegmentationTrainer(BaseTrainer[SegmentationVisualizer, SegmentationMetrics]):
     """Trainer class for segmentation models."""
 
     _TASK_TYPE: TaskType = TaskType.SEGMENTATION
-    metrics: SegmentationMetrics = SegmentationMetrics()
-    visualizer = SegmentationVisualizer
+    metrics_cls = SegmentationMetrics
+    visualizer_cls = SegmentationVisualizer
 
     def __init__(
         self,
-        model: nn.Module,
+        model_manager: SegmentationModelManager,
         criterion: nn.Module,
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler._LRScheduler,
         train_loader: DataLoader,
         val_loader: DataLoader,
         cfg: SegmentationConfig,
-        num_classes: int,
         test_loader: DataLoader | None = None,
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
     ):
-        self.num_classes = num_classes
         self.cfg: SegmentationConfig = cfg
         super().__init__(
-            model=model,
+            model_manager=model_manager,
             criterion=criterion,
             optimizer=optimizer,
             scheduler=scheduler,
@@ -52,14 +49,13 @@ class SegmentationTrainer(BaseTrainer):
             val_loader=val_loader,
             cfg=cfg.train,
             test_loader=test_loader,
-            device=device,
         )
 
-    def train_epoch(self) -> Tuple[float, float]:
+    def train_epoch(self) -> tuple[float, float]:
         """Train for one epoch.
 
         Returns:
-            A tuple of (average_loss, mIoU).
+            Tuple of (average_loss, average_iou)
         """
         self.model.train()
         total_loss = 0.0
@@ -69,10 +65,10 @@ class SegmentationTrainer(BaseTrainer):
         pbar = tqdm(self.train_loader, desc=f"Epoch {self.current_epoch + 1}")
 
         for _, (data, target) in enumerate(pbar):
-            data, target = data.to(self.device), target.to(self.device)
+            data, target = data.to(DEVICE), target.to(DEVICE)
 
             self.optimizer.zero_grad(set_to_none=True)
-            with autocast(device_type=self.device, enabled=self.use_amp):
+            with autocast(device_type=DEVICE, enabled=self.use_amp):
                 output = self.model(data)
                 loss = self.criterion(output, target)
 
@@ -110,9 +106,10 @@ class SegmentationTrainer(BaseTrainer):
 
         avg_loss = total_loss / num_batches
         avg_iou = total_iou / num_batches
+
         return avg_loss, avg_iou
 
-    def validate(self) -> Tuple[float, float]:
+    def validate(self) -> tuple[float, float]:
         """Validate the model.
 
         Returns:
@@ -125,16 +122,16 @@ class SegmentationTrainer(BaseTrainer):
 
         with torch.inference_mode():
             for data, target in tqdm(self.val_loader, desc="Validation"):
-                data, target = data.to(self.device), target.to(self.device)
+                data, target = data.to(DEVICE), target.to(DEVICE)
 
-                with autocast(device_type=self.device, enabled=self.use_amp):
+                with autocast(device_type=DEVICE, enabled=self.use_amp):
                     output = self.model(data)
                     loss = self.criterion(output, target)
 
                 total_loss += loss.item()
 
                 # Calculate mIoU
-                pred = output.argmax(dim=1)
+                pred = output.argmax(dim=1, keepdim=True)
                 iou = self._calculate_iou(pred, target)
                 total_iou += iou
 
@@ -142,7 +139,7 @@ class SegmentationTrainer(BaseTrainer):
         avg_iou = total_iou / num_batches
         return avg_loss, avg_iou
 
-    def train(
+    def _train(
         self,
     ) -> None:
         """Train the model for a specified number of epochs."""
@@ -176,9 +173,9 @@ class SegmentationTrainer(BaseTrainer):
             self.writer.add_scalar("mIoU/Val", val_miou, epoch)
             self.writer.add_scalar("LR", self.optimizer.param_groups[0]["lr"], epoch)
 
-            print(f"Epoch {epoch + 1}/{self.num_epochs}:")
-            print(f"  Train Loss: {train_loss:.4f}, Train mIoU: {train_miou:.4f}")
-            print(f"  Val Loss: {val_loss:.4f}, Val mIoU: {val_miou:.4f}")
+            logger.info(f"Epoch {epoch + 1}/{self.num_epochs}:")
+            logger.info(f"  Train Loss: {train_loss:.4f}, Train mIoU: {train_miou:.4f}")
+            logger.info(f"  Val Loss: {val_loss:.4f}, Val mIoU: {val_miou:.4f}")
 
             self._log_gpu_memory()
 
@@ -198,77 +195,45 @@ class SegmentationTrainer(BaseTrainer):
                 self.early_stopping_patience
                 and patience_counter >= self.early_stopping_patience
             ):
-                print(f"Early stopping triggered after {epoch + 1} epochs")
+                logger.info(f"Early stopping triggered after {epoch + 1} epochs")
                 break
 
         self.writer.close()
 
         # Evaluate on test set if provided
         if self.test_loader is not None:
-            print("\n" + "=" * 50)
-            print("FINAL TEST EVALUATION")
-            print("=" * 50)
-            test_metrics = self.evaluate(self.test_loader)
-            print(f"Final Test mIoU: {test_metrics['test_miou']:.4f}")
-            print("=" * 50)
+            logger.info("\n" + "=" * 50)
+            logger.info("FINAL TEST EVALUATION")
+            logger.info("=" * 50)
+            self.evaluate(self.test_loader)
+            logger.info("=" * 50)
 
-    def evaluate(self, test_loader: DataLoader) -> Dict[str, float]:
-        """Evaluate the model on test data.
-
-        Args:
-            test_loader: DataLoader for the test set.
-
-        Returns:
-            A dictionary of evaluation metrics (loss, mIoU).
-        """
+    def evaluate(self, test_loader: DataLoader) -> None:
+        """Evaluate the model on test data."""
         self.model.eval()
         total_loss = 0.0
         total_iou = 0.0
         num_batches = len(test_loader)
-        all_predictions: List[torch.Tensor] = []
-        all_targets: List[torch.Tensor] = []
 
         with torch.inference_mode():
             for data, target in tqdm(test_loader, desc="Evaluating"):
-                data, target = data.to(self.device), target.to(self.device)
+                data, target = data.to(DEVICE), target.to(DEVICE)
 
-                with autocast(device_type=self.device, enabled=self.use_amp):
+                with autocast(device_type=DEVICE, enabled=self.use_amp):
                     output = self.model(data)
                     loss = self.criterion(output, target)
 
                 total_loss += loss.item()
-                pred = output.argmax(dim=1)
+                pred = output.argmax(dim=1, keepdim=True)
                 iou = self._calculate_iou(pred, target)
                 total_iou += iou
-
-                all_predictions.append(pred.cpu())
-                all_targets.append(target.cpu())
 
         avg_loss = total_loss / num_batches
         avg_iou = total_iou / num_batches
 
-        all_predictions_tensor = torch.cat(all_predictions).flatten()
-        all_targets_tensor = torch.cat(all_targets).flatten()
-
-        cm = confusion_matrix(
-            all_targets_tensor.numpy(), all_predictions_tensor.numpy()
-        )
-        report = classification_report(
-            all_targets_tensor.numpy(), all_predictions_tensor.numpy(), output_dict=True
-        )
-
-        metrics = {
-            "test_loss": avg_loss,
-            "test_miou": avg_iou,
-            "confusion_matrix": cm,
-            "classification_report": report,
-        }
-
-        print("Test Results:")
-        print(f"  Loss: {avg_loss:.4f}")
-        print(f"  mIoU: {avg_iou:.4f}")
-
-        return metrics
+        logger.info("Test Results:")
+        logger.info(f"  Loss: {avg_loss:.4f}")
+        logger.info(f"  mIoU: {avg_iou:.4f}")
 
     def _calculate_iou(self, pred: torch.Tensor, target: torch.Tensor) -> float:
         """Calculate the Intersection over Union for a batch using a vectorized approach.
@@ -284,9 +249,10 @@ class SegmentationTrainer(BaseTrainer):
         target = target.view(-1)
 
         # Calculate the confusion matrix
-        confusion_vector = target * self.num_classes + pred
-        counts = torch.bincount(confusion_vector, minlength=self.num_classes**2)
-        confusion_matrix = counts.reshape(self.num_classes, self.num_classes)
+        num_classes = self.cfg.model.classes
+        confusion_vector = target * num_classes + pred
+        counts = torch.bincount(confusion_vector, minlength=num_classes**2)
+        confusion_matrix = counts.reshape(num_classes, num_classes)
 
         # Calculate intersection and union
         intersection = torch.diag(confusion_matrix)
@@ -307,45 +273,21 @@ class SegmentationTrainer(BaseTrainer):
 
         return miou
 
-    def predict_labels(self, data_loader: DataLoader) -> Tuple[List[int], List[int]]:
-        """Return true and predicted labels for a loader (CPU lists)."""
-        self.model.eval()
-        all_predictions: List[torch.Tensor] = []
-        all_targets: List[torch.Tensor] = []
-        with torch.inference_mode():
-            for data, target in tqdm(data_loader, desc="Predict"):
-                data, target = data.to(self.device), target.to(self.device)
-                with autocast(device_type=self.device, enabled=self.use_amp):
-                    output = self.model(data)
-                    pred = output.argmax(dim=1)
-                all_predictions.append(pred.cpu())
-                all_targets.append(target.cpu())
-
-        y_true = torch.cat(all_targets).flatten().tolist()
-        y_pred = torch.cat(all_predictions).flatten().tolist()
-
-        return y_true, y_pred
-
-    def visualize(self) -> None:
+    def visualize_pre_train(self) -> None:
         """Visualize all aspects of training.
 
         This method creates visualizations for:
         - Example images (with and without augmentations)
         - Data distribution (pixel counts per class)
-        - Model predictions
-        - Training metrics (loss and mIoU curves)
         """
-        vis_save_dir = self.root_dir / "visualizations"
-
         logger.info("\n" + "=" * 50)
-        logger.info("GENERATING VISUALIZATIONS")
+        logger.info("GENERATING PRE-TRAIN VISUALIZATIONS")
         logger.info("=" * 50)
 
         # Visualize example images
         logger.info("\n1. Visualizing example images...")
         self.visualizer.visualize_example_images(
             data_loader=self.train_loader,
-            save_dir=vis_save_dir,
             num_samples=4,
         )
 
@@ -353,39 +295,61 @@ class SegmentationTrainer(BaseTrainer):
         logger.info("\n2. Visualizing data distribution...")
         self.visualizer.visualize_data_distribution(
             data_loader=self.train_loader,
-            save_dir=vis_save_dir,
         )
 
+    def visualize_post_train(self) -> None:
+        """Visualize all aspects of training.
+
+        This method creates visualizations for:
+        - Model predictions
+        - Training metrics (loss and mIoU curves)
+        """
+        logger.info("=" * 50)
+        logger.info("GENERATING POST-TRAIN VISUALIZATIONS")
+        logger.info("=" * 50)
         # Visualize predictions (use test set if available, otherwise validation set)
-        logger.info("\n3. Visualizing predictions...")
+        logger.info("\n1. Visualizing predictions...")
         prediction_loader = (
             self.test_loader if self.test_loader is not None else self.val_loader
         )
         self.visualizer.visualize_predictions(
             data_loader=prediction_loader,
             model=self.model,
-            save_dir=vis_save_dir,
-            device=self.device,
             use_amp=self.use_amp,
             num_samples=4,
         )
 
         # Visualize metrics
-        logger.info("\n4. Visualizing training metrics...")
+        logger.info("\n2. Visualizing training metrics...")
         self.visualizer.visualize_metrics(
             metrics=self.metrics,
-            save_dir=vis_save_dir,
+        )
+
+        # Visualize per class metrics
+        logger.info("\n3. Visualizing per class metrics...")
+        self.visualizer.visualize_per_class_metrics(
+            data_loader=prediction_loader,
+            model=self.model,
+            use_amp=self.use_amp,
         )
 
         logger.info("\n" + "=" * 50)
-        logger.info(f"All visualizations saved to: {vis_save_dir}")
+        logger.info(f"All visualizations saved to: {self.visualize_dir}")
         logger.info("=" * 50)
 
     def get_root_dir_path(self) -> Path:
         """Get the path of the root directory."""
         arch = self.cfg.model.architecture
-        model = self.cfg.model.params["encoder_name"]
+        model = self.cfg.model.encoder_name
         height = self.cfg.model.height
         width = self.cfg.model.width
         epochs = self.cfg.train.epochs
-        return Path(self.cfg.train.root_dir) / self._TASK_TYPE.value / f"{arch}_{model}_{height}x{width}_{epochs}epochs"
+        bs = self.cfg.train.batch_size
+        dataset_path = Path(self.cfg.data.root)
+        dataset_name = dataset_path.name
+        return (
+            Path(self.cfg.train.root_dir)
+            / self._TASK_TYPE.value
+            / dataset_name
+            / f"{arch}_{model}_{height}x{width}_{epochs}epochs_{bs}bs"
+        )
