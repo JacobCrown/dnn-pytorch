@@ -92,6 +92,9 @@ class BaseTrainer(ABC):
         self.current_epoch: int = 0
         self.num_epochs: int = self.train_cfg.epochs
 
+        # Setup visualizer
+        self.visualizer = self.visualizer(save_dir=self.visualize_dir)
+
         # Resume from checkpoint if specified
         if self.resume_from_checkpoint_path:
             self._resume_from_checkpoint()
@@ -199,13 +202,13 @@ class BaseTrainer(ABC):
         pass
 
     @abstractmethod
-    def train_(self):
+    def _train(self):
         pass
 
     def train(self):
         """Train the model."""
         self.visualize_pre_train()
-        self.train_()
+        self._train()
         self.visualize_post_train()
 
     @abstractmethod

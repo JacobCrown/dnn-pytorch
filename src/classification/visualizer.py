@@ -63,29 +63,6 @@ class ClassificationVisualizer(BaseVisualizer):
         return (width, height)
 
     @staticmethod
-    def _denormalize_image(image: np.ndarray) -> np.ndarray:
-        """Denormalize image for visualization."""
-        if image.ndim == 3 and image.shape[0] in [1, 3]:
-            image = np.transpose(image, (1, 2, 0))
-
-        if image.dtype != np.uint8:
-            mean = np.array([0.485, 0.456, 0.406])
-            std = np.array([0.229, 0.224, 0.225])
-
-            if image.min() < 0 or image.max() < 1.5:
-                image = image * std + mean
-
-            image = np.clip(image * 255, 0, 255).astype(np.uint8)
-
-        if image.ndim == 2 or (image.ndim == 3 and image.shape[2] == 1):
-            squeezed = image.squeeze()
-            converted = cv2.cvtColor(squeezed, cv2.COLOR_GRAY2RGB)
-            if converted is not None:
-                image = converted
-
-        return image
-
-    @staticmethod
     def _get_samples_per_class(
         dataset: ClassificationDataset,
         num_samples_per_class: int,
@@ -187,10 +164,9 @@ class ClassificationVisualizer(BaseVisualizer):
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
 
-    @staticmethod
     def visualize_example_images(
+        self,
         data_loader: DataLoader,
-        save_dir: Path,
         num_samples_per_class: int | None = None,
         num_cols: int | None = None,
         figsize: tuple[float, float] | None = None,
@@ -199,13 +175,10 @@ class ClassificationVisualizer(BaseVisualizer):
 
         Args:
             data_loader: DataLoader containing the dataset
-            save_dir: Directory to save visualizations
             num_samples_per_class: Number of samples per class (auto-adjusted for many classes)
             num_cols: Number of columns (auto-adjusted for many classes)
             figsize: Figure size (auto-calculated if None)
         """
-        save_dir.mkdir(parents=True, exist_ok=True)
-
         dataset = data_loader.dataset
         if not isinstance(dataset, ClassificationDataset):
             raise ValueError("Dataset must be a ClassificationDataset")
@@ -248,7 +221,7 @@ class ClassificationVisualizer(BaseVisualizer):
             class_names,
             num_cols,
             "Example Images (No Augmentation)",
-            save_dir / "example_images_no_aug.png",
+            self.save_dir / "example_images_no_aug.png",
             figsize,
         )
 
@@ -259,23 +232,18 @@ class ClassificationVisualizer(BaseVisualizer):
             class_names,
             num_cols,
             "Example Images (With Augmentation)",
-            save_dir / "example_images_with_aug.png",
+            self.save_dir / "example_images_with_aug.png",
             figsize,
         )
 
-        logger.info(f"Example images saved to {save_dir}")
+        logger.info(f"Example images saved to {self.save_dir}")
 
-    @staticmethod
     def visualize_data_distribution(
+        self,
         data_loader: DataLoader,
-        save_dir: Path | None = None,
         figsize: tuple[float, float] | None = None,
     ) -> None:
         """Visualize the distribution of classes with dynamic sizing."""
-        if save_dir is None:
-            save_dir = Path("visualizations")
-        save_dir.mkdir(parents=True, exist_ok=True)
-
         dataset = data_loader.dataset
         if not isinstance(dataset, ClassificationDataset):
             raise ValueError("Dataset must be a ClassificationDataset")
@@ -355,30 +323,22 @@ class ClassificationVisualizer(BaseVisualizer):
         )
 
         plt.tight_layout()
-        save_path = save_dir / "data_distribution.png"
+        save_path = self.save_dir / "data_distribution.png"
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
 
         logger.info(f"Data distribution plot saved to {save_path}")
 
-    @staticmethod
     def visualize_predictions(
+        self,
         data_loader: DataLoader,
-        model: nn.Module | None = None,
-        save_dir: Path | None = None,
+        model: nn.Module,
         use_amp: bool = False,
         num_samples_per_class: int | None = None,
         num_cols: int | None = None,
         figsize: tuple[float, float] | None = None,
     ) -> None:
         """Visualize model predictions with automatic adjustment for many classes."""
-        if model is None:
-            raise ValueError("Model is required for visualizing predictions")
-
-        if save_dir is None:
-            save_dir = Path("visualizations")
-        save_dir.mkdir(parents=True, exist_ok=True)
-
         dataset = data_loader.dataset
         if not isinstance(dataset, ClassificationDataset):
             raise ValueError("Dataset must be a ClassificationDataset")
@@ -495,7 +455,7 @@ class ClassificationVisualizer(BaseVisualizer):
                 border_color = "green" if is_correct else "red"
 
                 # Add border by creating a larger image with padding
-                border_width = 6  # Szerokość obramowania w pikselach
+                border_width = 6
 
                 # Create padded image with border color
                 border_rgb = [0, 255, 0] if border_color == "green" else [255, 0, 0]
@@ -533,7 +493,7 @@ class ClassificationVisualizer(BaseVisualizer):
             ax.set_yticks([])
 
         plt.tight_layout()
-        save_path = save_dir / "predictions.png"
+        save_path = self.save_dir / "predictions.png"
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
 
@@ -547,10 +507,9 @@ class ClassificationVisualizer(BaseVisualizer):
             f"Accuracy on visualized samples: {accuracy:.2f}% ({correct}/{len(true_labels)})"
         )
 
-    @staticmethod
     def visualize_metrics(
+        self,
         metrics: BaseMetrics,
-        save_dir: Path | None = None,
         data_loader: DataLoader | None = None,
         model: nn.Module | None = None,
         use_amp: bool = False,
@@ -558,18 +517,12 @@ class ClassificationVisualizer(BaseVisualizer):
         figsize_cm: tuple[float, float] | None = None,
     ) -> None:
         """Visualize training metrics with improved confusion matrix for many classes."""
-        if save_dir is None:
-            save_dir = Path("visualizations")
-        save_dir.mkdir(parents=True, exist_ok=True)
-
         # Plot loss curves
-        ClassificationVisualizer._plot_loss_curves(metrics, save_dir, figsize_curves)
+        self._plot_loss_curves(metrics, figsize_curves)
 
         # Plot accuracy curves
         if hasattr(metrics, "accuracies"):
-            ClassificationVisualizer._plot_accuracy_curves(
-                metrics, save_dir, figsize_curves
-            )
+            self._plot_accuracy_curves(metrics, figsize_curves)
 
         # Plot confusion matrix with dynamic sizing
         if data_loader is not None and model is not None:
@@ -582,19 +535,16 @@ class ClassificationVisualizer(BaseVisualizer):
                     cm_size = max(12, min(40, num_classes * 0.4))
                     figsize_cm = (cm_size, cm_size * 0.9)
 
-                ClassificationVisualizer._plot_confusion_matrix(
-                    data_loader, model, save_dir, use_amp, figsize_cm
-                )
+                self._plot_confusion_matrix(data_loader, model, use_amp, figsize_cm)
         else:
             logger.info("Skipping confusion matrix (requires data_loader and model)")
 
-        logger.info(f"All metrics visualizations saved to {save_dir}")
+        logger.info(f"All metrics visualizations saved to {self.save_dir}")
 
-    @staticmethod
     def visualize_per_class_metrics(
+        self,
         data_loader: DataLoader,
         model: nn.Module,
-        save_dir: Path,
         use_amp: bool = False,
         figsize: tuple[float, float] | None = None,
     ) -> None:
@@ -603,12 +553,9 @@ class ClassificationVisualizer(BaseVisualizer):
         Args:
             data_loader: DataLoader for evaluation.
             model: The model to evaluate.
-            save_dir: Directory to save the plot.
             use_amp: Whether to use automatic mixed precision.
             figsize: Figure size (auto-calculated if None).
         """
-        save_dir.mkdir(parents=True, exist_ok=True)
-
         dataset = data_loader.dataset
         if not isinstance(dataset, ClassificationDataset):
             raise ValueError("Dataset must be a ClassificationDataset")
@@ -681,15 +628,14 @@ class ClassificationVisualizer(BaseVisualizer):
                 )
 
         plt.tight_layout()
-        save_path = save_dir / "per_class_accuracy.png"
+        save_path = self.save_dir / "per_class_accuracy.png"
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
 
         logger.info(f"Per-class accuracy plot saved to {save_path}")
 
-    @staticmethod
     def _plot_loss_curves(
-        metrics: BaseMetrics, save_dir: Path, figsize: tuple[float, float]
+        self, metrics: BaseMetrics, figsize: tuple[float, float]
     ) -> None:
         """Plot loss curves."""
         fig, ax = plt.subplots(figsize=figsize)
@@ -705,15 +651,14 @@ class ClassificationVisualizer(BaseVisualizer):
         ax.grid(True, alpha=0.3)
 
         plt.tight_layout()
-        save_path = save_dir / "loss_curves.png"
+        save_path = self.save_dir / "loss_curves.png"
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
 
         logger.info(f"Loss curves saved to {save_path}")
 
-    @staticmethod
     def _plot_accuracy_curves(
-        metrics: BaseMetrics, save_dir: Path, figsize: tuple[float, float]
+        self, metrics: BaseMetrics, figsize: tuple[float, float]
     ) -> None:
         """Plot accuracy curves."""
         fig, ax = plt.subplots(figsize=figsize)
@@ -730,17 +675,16 @@ class ClassificationVisualizer(BaseVisualizer):
         ax.grid(True, alpha=0.3)
 
         plt.tight_layout()
-        save_path = save_dir / "accuracy_curves.png"
+        save_path = self.save_dir / "accuracy_curves.png"
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
 
         logger.info(f"Accuracy curves saved to {save_path}")
 
-    @staticmethod
     def _plot_confusion_matrix(
+        self,
         data_loader: DataLoader,
         model: nn.Module,
-        save_dir: Path,
         use_amp: bool,
         figsize: tuple[float, float],
     ) -> None:
@@ -823,8 +767,8 @@ class ClassificationVisualizer(BaseVisualizer):
         plt.tight_layout()
 
         # Save both PNG and SVG for scalability
-        save_path_png = save_dir / "confusion_matrix.png"
-        save_path_svg = save_dir / "confusion_matrix.svg"
+        save_path_png = self.save_dir / "confusion_matrix.png"
+        save_path_svg = self.save_dir / "confusion_matrix.svg"
 
         plt.savefig(save_path_png, dpi=300, bbox_inches="tight")
         plt.savefig(save_path_svg, format="svg", bbox_inches="tight")

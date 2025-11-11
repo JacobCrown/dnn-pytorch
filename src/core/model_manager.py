@@ -1,6 +1,5 @@
 """Utility to construct and optionally freeze timm models from Hydra config."""
 
-import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Self
@@ -10,13 +9,11 @@ import torch.nn as nn
 
 from src.common.utils import DEVICE
 
-logger = logging.getLogger(__name__)
-
 
 class BaseModelManager(ABC):
     """Base model manager class."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the base model manager."""
         self.model = self.create_model().to(DEVICE)
         self.preprocessing = self.create_preprocessing()

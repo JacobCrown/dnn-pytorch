@@ -145,7 +145,7 @@ class ClassificationTrainer(BaseTrainer):
 
         return avg_loss, accuracy
 
-    def train_(
+    def _train(
         self,
     ) -> None:
         """Train the model."""
@@ -280,7 +280,6 @@ class ClassificationTrainer(BaseTrainer):
         logger.info("\n1. Visualizing example images...")
         self.visualizer.visualize_example_images(
             data_loader=self.train_loader,
-            save_dir=self.visualize_dir,
             num_samples_per_class=5,
         )
 
@@ -288,7 +287,6 @@ class ClassificationTrainer(BaseTrainer):
         logger.info("\n2. Visualizing data distribution...")
         self.visualizer.visualize_data_distribution(
             data_loader=self.train_loader,
-            save_dir=self.visualize_dir,
         )
 
     def visualize_post_train(self) -> None:
@@ -309,7 +307,6 @@ class ClassificationTrainer(BaseTrainer):
         self.visualizer.visualize_predictions(
             data_loader=prediction_loader,
             model=self.model,
-            save_dir=self.visualize_dir,
             use_amp=self.use_amp,
             num_samples_per_class=5,
         )
@@ -318,7 +315,6 @@ class ClassificationTrainer(BaseTrainer):
         logger.info("\n2. Visualizing training metrics...")
         self.visualizer.visualize_metrics(
             metrics=self.metrics,
-            save_dir=self.visualize_dir,
             data_loader=prediction_loader,
             model=self.model,
             use_amp=self.use_amp,
@@ -327,7 +323,6 @@ class ClassificationTrainer(BaseTrainer):
         # Visualize per class metrics
         logger.info("\n3. Visualizing per class metrics...")
         self.visualizer.visualize_per_class_metrics(
-            save_dir=self.visualize_dir,
             data_loader=prediction_loader,
             model=self.model,
             use_amp=self.use_amp,

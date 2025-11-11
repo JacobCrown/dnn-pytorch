@@ -9,7 +9,6 @@ This module provides two entry points:
 from typing import Any
 
 import albumentations as A
-from albumentations.pytorch import ToTensorV2
 
 from src.common.config import AugmentationConfig
 
@@ -49,19 +48,14 @@ def _create_transform_from_spec(spec: dict[str, Any]) -> Any:
     return transform_class(**params)
 
 
-def get_augmentations(
-    cfg: list[AugmentationConfig], append_to_tensor: bool = True
-) -> A.Compose:
+def get_augmentations(cfg: list[AugmentationConfig]) -> A.Compose:
     """Parse `cfg` and return an Albumentations `Compose`.
 
     Args:
         cfg: List of AugmentationConfig objects
-        append_to_tensor: if True, append `ToTensorV2()` at the end
     """
     transforms: list[Any] = []
     for aug_spec in cfg:
         transforms.append(_create_transform_from_spec(aug_spec.to_dict()))
 
-    if append_to_tensor:
-        transforms.append(ToTensorV2())
     return A.Compose(transforms)

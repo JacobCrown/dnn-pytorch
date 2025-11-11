@@ -4,7 +4,7 @@ from pathlib import Path
 
 import albumentations as A
 import hydra
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
 from torchinfo import summary
 
 from src.classification.config import ClassificationConfig
@@ -26,13 +26,14 @@ logger = setup_logging(__file__)
 
 @hydra.main(
     version_base=None,
-    config_path="../../configs",
-    config_name="classification/main.yaml",
+    config_path="../../configs/classification",
+    config_name="main.yaml",
 )
-def main(cfg: DictConfig) -> None:
+def main(cfg: dict) -> None:
+    # ---------------------------------------------------------------------
     # Load config
-    root_cfg = cfg.classification
-    config = ClassificationConfig.from_dict(root_cfg)
+    # ---------------------------------------------------------------------
+    config = ClassificationConfig.from_dict(dict(cfg))
     logger.info("Resolved configuration:\n%s", OmegaConf.to_yaml(cfg, resolve=True))
 
     # ---------------------------------------------------------------------
@@ -67,8 +68,8 @@ def main(cfg: DictConfig) -> None:
     # Augmentations + Preprocessing
     # ---------------------------------------------------------------------
     logger.info("Building augmentation and preprocessing pipelines…")
-    # Rebuild using augmentations but avoid duplicate ToTensorV2
-    train_augs = get_augmentations(config.augmentations, append_to_tensor=False)
+
+    train_augs = get_augmentations(config.augmentations)
 
     train_transforms = A.Compose(train_augs.transforms + data_preproc.transforms)
     logger.info("Train transforms: %s", train_transforms)
@@ -137,9 +138,10 @@ def main(cfg: DictConfig) -> None:
     # ---------------------------------------------------------------------
     # Model
     # ---------------------------------------------------------------------
-    logger.info("Creating model %s", root_cfg.model.name)
+    logger.info("Creating model %s", config.model.name)
     logger.info(
-        "Model created — total params: %d", sum(p.numel() for p in model.parameters())
+        "Model created — total parameters: %d",
+        sum(p.numel() for p in model.parameters()),
     )
 
     # ---------------------------------------------------------------------
