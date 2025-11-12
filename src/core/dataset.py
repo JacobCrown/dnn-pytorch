@@ -31,7 +31,7 @@ class BaseDataset(Dataset):
             data_root: Root directory containing the data
             transforms: Transforms to apply to images
             extensions: List of image file extensions to include
-            max_samples: Maximum number of samples to load
+            max_samples: Maximum number of samples to load per class
             task_type: Type of task this dataset is for
         """
         self.data_root = Path(data_root)

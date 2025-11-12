@@ -33,7 +33,7 @@ class ClassificationDataset(BaseDataset):
         data_root (str): Root directory containing class-named subdirectories
         transforms (Compose): Torchvision transforms to apply to images
         extensions (List[str]): List of image file extensions to include
-        max_samples (Optional[int]): Maximum number of samples to load
+        max_samples (Optional[int]): Maximum number of samples to load per class
     """
 
     def __init__(
@@ -60,16 +60,21 @@ class ClassificationDataset(BaseDataset):
         self.class_to_idx = {
             cls_name: idx for idx, cls_name in enumerate(self.class_names)
         }
+        self.idx_to_class = {
+            class_name: idx for idx, class_name in self.class_to_idx.items()
+        }
 
         # Build file paths and labels
         for class_name in self.class_names:
+            class_samples = 0
             class_dir = self.data_root / class_name
             class_idx = self.class_to_idx[class_name]
 
             for file_path in class_dir.iterdir():
                 if file_path.suffix.lower() in self.extensions:
                     self.samples.append((str(file_path), class_idx))
-                    if self.max_samples and len(self.samples) >= self.max_samples:
+                    class_samples += 1
+                    if self.max_samples and class_samples >= self.max_samples:
                         break
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
@@ -97,6 +102,10 @@ class ClassificationDataset(BaseDataset):
     def get_class_to_idx(self) -> dict[str, int]:
         """Get the mapping from class names to indices."""
         return self.class_to_idx
+
+    def get_idx_to_class(self) -> dict[int, str]:
+        """Get the mapping from indices to class names."""
+        return self.idx_to_class
 
     def get_data_distribution(self) -> list[DataDistribution]:
         """Get the distribution of the data."""
