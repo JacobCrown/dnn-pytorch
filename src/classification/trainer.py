@@ -313,13 +313,7 @@ class ClassificationTrainer(
         logger.info(f"  Accuracy: {accuracy:.2f}%")
         logger.info(f"  Correct: {correct}/{total}")
 
-    def _create_checkpoint(self) -> dict:
+    def _create_checkpoint_task_specific(self) -> dict:
         return {
-            "epoch": self.current_epoch,
-            "model_state_dict": self.model_manager.get_model_state_dict(),
-            "model_config": self.model_manager.model_cfg.to_dict(),
-            "optimizer_state_dict": self.optimizer.state_dict(),
-            "scheduler_state_dict": self.scheduler.state_dict(),
-            "metrics_data": self.metrics.to_dict(),
             "class_names": self.train_loader.dataset.get_class_names(),
         }

@@ -180,6 +180,21 @@ class BaseTrainer[
         filepath = self.checkpoints_dir / filename
         torch.save(checkpoint, filepath)
 
+    def _create_checkpoint(self) -> dict:
+        checkpoint_dict = self._create_checkpoint_common()
+        checkpoint_dict.update(self._create_checkpoint_task_specific())
+        return checkpoint_dict
+
+    def _create_checkpoint_common(self) -> dict:
+        return {
+            "epoch": self.current_epoch,
+            "model_state_dict": self.model_manager.get_model_state_dict(),
+            "model_config": self.model_manager.model_cfg.to_dict(),
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "scheduler_state_dict": self.scheduler.state_dict(),
+            "metrics_data": self.metrics.to_dict(),
+        }
+
     # ================================ Abstract Methods ================================
 
     @abstractmethod
@@ -211,7 +226,7 @@ class BaseTrainer[
         pass
 
     @abstractmethod
-    def _create_checkpoint(self) -> dict:
+    def _create_checkpoint_task_specific(self) -> dict:
         pass
 
     @abstractmethod
