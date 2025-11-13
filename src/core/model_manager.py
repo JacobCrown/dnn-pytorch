@@ -14,11 +14,11 @@ from src.common.utils import DEVICE
 class BaseModelManager[ModelConfigType: BaseConfig](ABC):
     """Base model manager class."""
 
-    def __init__(self, model_cfg) -> None:
+    def __init__(self, model_cfg: ModelConfigType) -> None:
         """Initialize the base model manager."""
-        self.model = self.create_model().to(DEVICE)
-        self.preprocessing = self.create_preprocessing()
         self.model_cfg: ModelConfigType = model_cfg
+        self.model: nn.Module = self.create_model().to(DEVICE)
+        self.preprocessing: A.Compose = self.create_preprocessing()
 
     @abstractmethod
     def create_model(self) -> nn.Module:

@@ -170,7 +170,7 @@ class BaseTrainer[
         self._train()
         self._visualize_post_train()
 
-    def save_checkpoint(self, filename: str) -> None:
+    def _save_checkpoint(self, filename: str) -> None:
         """Save model checkpoint.
 
         Args:

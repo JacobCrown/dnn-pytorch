@@ -23,10 +23,11 @@ class ClassificationPredictor:
         self.device: torch.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
         )
-        self.model, self.preprocessing = self.load_model_and_preprocessing()
-        self.class_names: list[str] = self.load_class_names()
+        self.model, self.preprocessing, self.class_names = (
+            self.load_model_and_preprocessing()
+        )
 
-    def load_model_and_preprocessing(self) -> tuple[nn.Module, A.Compose]:
+    def load_model_and_preprocessing(self) -> tuple[nn.Module, A.Compose, list[str]]:
         checkpoint = torch.load(
             str(self.checkpoint_path), map_location=self.device, weights_only=False
         )
@@ -58,7 +59,8 @@ class ClassificationPredictor:
                 A.ToTensorV2(),
             ]
         )
-        return model, preprocessing
+
+        return model, preprocessing, checkpoint["class_names"]
 
     def _preprocess(self, input: Image | np.ndarray) -> torch.Tensor:
         return self.preprocessing(image=input)["image"].unsqueeze(0).to(self.device)
@@ -75,3 +77,7 @@ class ClassificationPredictor:
         result = self._predict(preprocess)
         postprocess = self._postprocess(result)
         return postprocess
+
+    def predict_class(self, input: Image | np.ndarray) -> str:
+        prediction = self.predict(input)
+        return self.class_names[int(prediction.item())]

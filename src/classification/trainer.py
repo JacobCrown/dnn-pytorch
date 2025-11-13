@@ -53,6 +53,8 @@ class ClassificationTrainer(
             cfg=cfg.train,
             test_loader=test_loader,
         )
+        # Task specific attributes
+        self.class_names: list[str] = train_loader.dataset.get_class_names()
 
     # ================================ Overridden Abstract Methods ================================
 
@@ -228,12 +230,12 @@ class ClassificationTrainer(
             log_gpu_memory(logger)
 
             # Always save last checkpoint
-            self.save_checkpoint("last.pth")
+            self._save_checkpoint("last.pth")
 
             # Save best model when validation metric improves
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                self.save_checkpoint("best.pth")
+                self._save_checkpoint("best.pth")
                 patience_counter = 0
             else:
                 patience_counter += 1
@@ -317,3 +319,13 @@ class ClassificationTrainer(
         return {
             "class_names": self.train_loader.dataset.get_class_names(),
         }
+
+    def _load_checkpoint_task_specific(self, checkpoint: dict) -> None:
+        if "class_names" in checkpoint:
+            checkpoint_class_names = checkpoint["class_names"]
+            if checkpoint_class_names != self.class_names:
+                raise ValueError(
+                    f"Class names in checkpoint ({checkpoint_class_names}) do not match the class names in the trainer ({self.class_names})"
+                )
+        else:
+            raise ValueError("Class names not found in checkpoint")
