@@ -8,7 +8,6 @@ import albumentations as A
 import numpy as np
 import torch
 
-from src.common.enums import TaskType
 from src.core.dataset import BaseDataset
 from src.segmentation.config import ClassConfig
 
@@ -78,7 +77,6 @@ class SegmentationDataset(BaseDataset):
             transforms=transforms,
             extensions=extensions,
             max_samples=max_samples,
-            task_type=TaskType.SEGMENTATION,
         )
 
     def _create_lookup_table(self) -> np.ndarray:

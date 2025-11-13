@@ -3,6 +3,7 @@
 import logging
 from pathlib import Path
 
+import albumentations as A
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -15,275 +16,293 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.classification.dataset import ClassificationDataset
-from src.common.enums import TaskType
 from src.common.utils import DEVICE
 from src.core.metrics import BaseMetrics
 from src.core.visualizer import BaseVisualizer
 
 logger = logging.getLogger(__name__)
 
+PlotData = dict[str, list[np.ndarray]]
+PredictionData = dict[int, dict[str, list[np.ndarray | int]]]
+
 
 class ClassificationVisualizer(BaseVisualizer):
     """Visualizer class for classification tasks with improved handling of many classes."""
 
-    _TASK_TYPE: TaskType = TaskType.CLASSIFICATION
+    def __init__(self, save_dir: Path):
+        """Initialize the classification visualizer.
+
+        Args:
+            save_dir: Directory to save visualizations
+        """
+        super().__init__(save_dir)
+        self._setup_plot_style()
+
+    def _setup_plot_style(self) -> None:
+        """Setup consistent plotting style."""
+        plt.rcParams["figure.figsize"] = (12, 8)
+        plt.rcParams["font.size"] = 12
+        sns.set_style("whitegrid")
 
     @staticmethod
     def _calculate_optimal_figsize(
-        num_images: int,
+        num_rows: int,
         num_cols: int,
-        image_size: tuple[int, int] = (64, 64),
-        min_cell_size: float = 1.5,
+        base_image_size: tuple[int, int] = (64, 64),
+        scale_factor: float = 1.0,
     ) -> tuple[float, float]:
-        """Calculate optimal figure size based on number of images.
+        """Calculate optimal figure size for image grids.
 
         Args:
-            num_images: Total number of images to display
-            num_cols: Number of columns
-            image_size: Original image size (height, width)
-            min_cell_size: Minimum size per cell in inches
+            num_rows: Number of rows in the grid
+            num_cols: Number of columns in the grid
+            base_image_size: Base size of individual images (height, width)
+            scale_factor: Scaling factor for the figure
 
         Returns:
-            Optimal (width, height) for figure
+            Optimal (width, height) for the figure
         """
-        num_rows = (num_images + num_cols - 1) // num_cols
-
-        # Calculate based on image aspect ratio
-        aspect_ratio = image_size[1] / image_size[0]  # width / height
-        cell_height = min_cell_size
-        cell_width = min_cell_size * aspect_ratio
-
-        width = num_cols * cell_width
-        height = num_rows * cell_height
-
-        # Apply reasonable limits
-        width = max(10, min(50, width))
-        height = max(8, min(40, height))
-
+        aspect_ratio = base_image_size[1] / base_image_size[0]  # width / height
+        width = num_cols * aspect_ratio * scale_factor
+        height = num_rows * scale_factor
         return (width, height)
 
     @staticmethod
+    def _load_and_process_image(
+        file_path: Path, transforms: A.Compose | None = None
+    ) -> np.ndarray | None:
+        """Load and process a single image.
+
+        Args:
+            file_path: Path to the image file
+            transforms: Optional transforms to apply
+
+        Returns:
+            Processed image or None if loading failed
+        """
+        try:
+            image = cv2.imread(str(file_path))
+            if image is None:
+                return None
+
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+            if transforms is not None:
+                augmented = transforms(image=image)
+                image = augmented["image"]
+                if isinstance(image, torch.Tensor):
+                    image = image.cpu().numpy()
+
+            return image
+        except Exception as e:
+            logger.warning(f"Failed to load image {file_path}: {e}")
+            return None
+
     def _get_samples_per_class(
+        self,
         dataset: ClassificationDataset,
         num_samples_per_class: int,
         with_augmentations: bool = False,
-    ) -> tuple[list[np.ndarray], list[int], list[str]]:
-        """Get sample images for each class."""
+    ) -> PlotData:
+        """Get sample images for each class.
+
+        Args:
+            dataset: Classification dataset
+            num_samples_per_class: Number of samples to collect per class
+            with_augmentations: Whether to apply augmentations
+
+        Returns:
+            Dictionary mapping class names to lists of images
+        """
         class_names = dataset.get_class_names()
-        num_classes = len(class_names)
+        idx_to_class = dataset.get_idx_to_class()
+        transforms = dataset.transforms if with_augmentations else None
 
-        samples_by_class = {i: [] for i in range(num_classes)}
+        # Group samples by class
+        samples_by_class: PlotData = {class_name: [] for class_name in class_names}
+        file_paths_by_class: dict[str, list[Path]] = {
+            class_name: [] for class_name in class_names
+        }
+
+        # Collect file paths
         for file_path, label in dataset.samples:
-            samples_by_class[label].append(file_path)
+            class_name = idx_to_class[label]
+            file_paths_by_class[class_name].append(Path(file_path))
 
-        images = []
-        labels = []
-
-        for class_idx in range(num_classes):
-            class_samples = samples_by_class[class_idx][:num_samples_per_class]
-
-            for file_path in class_samples:
-                image = cv2.imread(file_path)
+        # Load and process images
+        for class_name in class_names:
+            file_paths = file_paths_by_class[class_name][:num_samples_per_class]
+            for file_path in file_paths:
+                image = self._load_and_process_image(file_path, transforms)
                 if image is not None:
-                    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                else:
-                    continue
+                    samples_by_class[class_name].append(image)
 
-                if with_augmentations and dataset.transforms is not None:
-                    augmented = dataset.transforms(image=image)
-                    image = augmented["image"]
-                    if isinstance(image, torch.Tensor):
-                        image = image.cpu().numpy()
+                if len(samples_by_class[class_name]) >= num_samples_per_class:
+                    break
 
-                images.append(image)
-                labels.append(class_idx)
+        return samples_by_class
 
-        return images, labels, class_names
-
-    @staticmethod
-    def _plot_image_grid(
-        images: list[np.ndarray],
-        labels: list[int],
-        class_names: list[str],
-        num_cols: int,
+    def _create_image_grid(
+        self,
+        samples_by_class: PlotData,
         title: str,
-        save_path: Path,
-        figsize: tuple[float, float] | None = None,
         show_title_labels: bool = True,
-    ) -> None:
-        """Plot a grid of images with dynamic sizing."""
-        num_images = len(images)
-        num_rows = (num_images + num_cols - 1) // num_cols
+    ) -> tuple[plt.Figure, np.ndarray]:
+        """Create an image grid figure.
 
-        # Calculate optimal size if not provided
-        if figsize is None:
-            if num_images > 0:
-                sample_img = ClassificationVisualizer._denormalize_image(images[0])
-                figsize = ClassificationVisualizer._calculate_optimal_figsize(
-                    num_images, num_cols, sample_img.shape[:2]
-                )
-            else:
-                figsize = (15, 10)
+        Args:
+            samples_by_class: Dictionary of class names to images
+            title: Figure title
+            show_title_labels: Whether to show class labels as titles
 
-        fig, axes = plt.subplots(num_rows, num_cols, figsize=figsize)
+        Returns:
+            Figure and axes array
+        """
+        num_classes = len(samples_by_class)
+        max_images = max(len(images) for images in samples_by_class.values())
+
+        figsize = self._calculate_optimal_figsize(
+            num_rows=max_images, num_cols=num_classes, scale_factor=1.2
+        )
+
+        fig, axes = plt.subplots(
+            max_images, num_classes, figsize=figsize, squeeze=False
+        )
         fig.suptitle(title, fontsize=16, fontweight="bold", y=0.995)
 
-        if num_rows == 1:
-            axes = axes.reshape(1, -1)
-        if num_cols == 1:
-            axes = axes.reshape(-1, 1)
+        return fig, axes
 
-        # Calculate font size based on number of classes
-        num_classes = len(set(labels))
-        if num_classes > 50:
-            title_fontsize = 6
-        elif num_classes > 30:
-            title_fontsize = 8
-        else:
-            title_fontsize = 10
+    def _plot_image_grid(
+        self,
+        samples_by_class: PlotData,
+        title: str,
+        save_path: Path,
+        show_title_labels: bool = True,
+    ) -> None:
+        """Plot a grid of images with dynamic sizing.
 
-        for idx in range(num_rows * num_cols):
-            row = idx // num_cols
-            col = idx % num_cols
-            ax = axes[row, col]
+        Args:
+            samples_by_class: Dictionary mapping class names to lists of images
+            title: Title for the plot
+            save_path: Where to save the plot
+            show_title_labels: Whether to show class names as titles
+        """
+        fig, axes = self._create_image_grid(samples_by_class, title, show_title_labels)
+        class_names = list(samples_by_class.keys())
+        max_images = axes.shape[0]
 
-            if idx < num_images:
-                image = ClassificationVisualizer._denormalize_image(images[idx])
-                ax.imshow(image)
-                if show_title_labels:
-                    ax.set_title(
-                        f"{class_names[labels[idx]]}", fontsize=title_fontsize, pad=2
-                    )
-            else:
+        for col, class_name in enumerate(class_names):
+            images = samples_by_class[class_name]
+            for row in range(max_images):
+                ax = axes[row, col]
+
+                if row < len(images):
+                    image = self._denormalize_image(images[row])
+                    ax.imshow(image)
+
+                    if show_title_labels and row == 0:
+                        ax.set_title(class_name, fontsize=12, pad=2)
+                else:
+                    ax.axis("off")
+
                 ax.axis("off")
-
-            ax.set_xticks([])
-            ax.set_yticks([])
 
         plt.tight_layout()
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
+        logger.debug(f"Image grid saved to {save_path}")
 
     def visualize_example_images(
         self,
         data_loader: DataLoader,
-        num_samples_per_class: int | None = None,
-        num_cols: int | None = None,
-        figsize: tuple[float, float] | None = None,
+        num_samples_per_class: int = 5,
     ) -> None:
         """Visualize example training images with automatic adjustment for many classes.
 
         Args:
             data_loader: DataLoader containing the dataset
-            num_samples_per_class: Number of samples per class (auto-adjusted for many classes)
-            num_cols: Number of columns (auto-adjusted for many classes)
-            figsize: Figure size (auto-calculated if None)
+            num_samples_per_class: Number of samples per class to display
         """
-        dataset = data_loader.dataset
-        if not isinstance(dataset, ClassificationDataset):
-            raise ValueError("Dataset must be a ClassificationDataset")
+        dataset = self._validate_dataset(data_loader)
 
-        class_names = dataset.get_class_names()
-        num_classes = len(class_names)
-
-        # Auto-adjust parameters based on number of classes
-        if num_samples_per_class is None:
-            if num_classes > 50:
-                num_samples_per_class = 2  # Mniej próbek dla wielu klas
-            elif num_classes > 30:
-                num_samples_per_class = 3
-            else:
-                num_samples_per_class = 5
-
-        if num_cols is None:
-            num_cols = num_samples_per_class
-
-        logger.info(
-            f"Visualizing {num_classes} classes with {num_samples_per_class} samples each"
+        # Get samples without and with augmentations
+        samples_no_aug = self._get_samples_per_class(
+            dataset, num_samples_per_class, with_augmentations=False
         )
-
-        # Get images without augmentations
-        images_no_aug, labels_no_aug, _ = (
-            ClassificationVisualizer._get_samples_per_class(
-                dataset, num_samples_per_class, with_augmentations=False
-            )
-        )
-
-        # Get images with augmentations
-        images_aug, labels_aug, _ = ClassificationVisualizer._get_samples_per_class(
+        samples_with_aug = self._get_samples_per_class(
             dataset, num_samples_per_class, with_augmentations=True
         )
 
-        # Plot without augmentations
-        ClassificationVisualizer._plot_image_grid(
-            images_no_aug,
-            labels_no_aug,
-            class_names,
-            num_cols,
+        # Create visualizations
+        self._plot_image_grid(
+            samples_no_aug,
             "Example Images (No Augmentation)",
             self.save_dir / "example_images_no_aug.png",
-            figsize,
         )
-
-        # Plot with augmentations
-        ClassificationVisualizer._plot_image_grid(
-            images_aug,
-            labels_aug,
-            class_names,
-            num_cols,
+        self._plot_image_grid(
+            samples_with_aug,
             "Example Images (With Augmentation)",
             self.save_dir / "example_images_with_aug.png",
-            figsize,
         )
 
         logger.info(f"Example images saved to {self.save_dir}")
 
-    def visualize_data_distribution(
-        self,
-        data_loader: DataLoader,
-        figsize: tuple[float, float] | None = None,
-    ) -> None:
-        """Visualize the distribution of classes with dynamic sizing."""
+    def _validate_dataset(self, data_loader: DataLoader) -> ClassificationDataset:
+        """Validate that the dataset is a ClassificationDataset.
+
+        Args:
+            data_loader: DataLoader to validate
+
+        Returns:
+            Validated ClassificationDataset
+
+        Raises:
+            ValueError: If dataset is not a ClassificationDataset
+        """
         dataset = data_loader.dataset
         if not isinstance(dataset, ClassificationDataset):
             raise ValueError("Dataset must be a ClassificationDataset")
+        return dataset
 
+    def visualize_data_distribution(
+        self,
+        data_loader: DataLoader,
+        max_classes_for_labels: int = 50,
+    ) -> None:
+        """Visualize the distribution of classes with dynamic sizing.
+
+        Args:
+            data_loader: DataLoader containing the dataset
+            max_classes_for_labels: Maximum number of classes to show value labels for
+        """
+        dataset = self._validate_dataset(data_loader)
         data_distribution = dataset.get_data_distribution()
+
         class_names = [dist.class_name for dist in data_distribution]
         counts = [dist.count for dist in data_distribution]
-
         num_classes = len(class_names)
 
-        # Auto-calculate figure size based on number of classes
-        if figsize is None:
-            bar_width = max(12, num_classes * 0.3)
-            bar_width = min(bar_width, 30)  # Max width
-            figsize = (bar_width, 6)
+        # Dynamic figure sizing
+        fig_width = max(12, min(40, num_classes * 0.4))
+        figsize = (fig_width, 8)
 
-        # Create figure with one subplot
-        fig, ax = plt.subplots(1, 1, figsize=figsize)
+        fig, ax = plt.subplots(figsize=figsize)
+        colors = sns.color_palette("husl", num_classes)
 
-        # Bar plot with counts
-        colors = sns.color_palette("husl", len(class_names))
-        bars1 = ax.bar(range(len(class_names)), counts, color=colors)
+        bars = ax.bar(range(num_classes), counts, color=colors)
         ax.set_xlabel("Class", fontsize=12)
         ax.set_ylabel("Count", fontsize=12)
-        ax.set_title("Class Distribution (Counts)", fontsize=14, fontweight="bold")
-        ax.set_xticks(range(len(class_names)))
+        ax.set_title("Class Distribution", fontsize=14, fontweight="bold")
 
-        # Adjust label size and rotation based on number of classes
-        if num_classes > 50:
-            ax.set_xticklabels(class_names, rotation=90, ha="right", fontsize=6)
-        elif num_classes > 30:
-            ax.set_xticklabels(class_names, rotation=90, ha="right", fontsize=8)
-        else:
-            ax.set_xticklabels(class_names, rotation=45, ha="right", fontsize=10)
-
+        # Dynamic label sizing
+        tick_fontsize = self._get_tick_fontsize(num_classes)
+        ax.set_xticks(range(num_classes))
+        ax.set_xticklabels(class_names, rotation=90, ha="right", fontsize=tick_fontsize)
         ax.grid(axis="y", alpha=0.3)
 
-        # Add value labels only if not too many classes
-        if num_classes <= 30:
-            for bar in bars1:
+        # Add value labels only for reasonable number of classes
+        if num_classes <= max_classes_for_labels:
+            for bar in bars:
                 height = bar.get_height()
                 ax.text(
                     bar.get_x() + bar.get_width() / 2.0,
@@ -291,72 +310,78 @@ class ClassificationVisualizer(BaseVisualizer):
                     f"{int(height)}",
                     ha="center",
                     va="bottom",
-                    fontsize=8,
+                    fontsize=max(6, tick_fontsize - 2),
                 )
 
         plt.tight_layout()
         save_path = self.save_dir / "data_distribution.png"
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
-
         logger.info(f"Data distribution plot saved to {save_path}")
 
-    def visualize_predictions(
+    def _get_tick_fontsize(self, num_classes: int) -> int:
+        """Get appropriate font size based on number of classes.
+
+        Args:
+            num_classes: Number of classes
+
+        Returns:
+            Appropriate font size
+        """
+        if num_classes > 70:
+            return 4
+        elif num_classes > 50:
+            return 5
+        elif num_classes > 30:
+            return 6
+        else:
+            return 8
+
+    def _get_predictions(
         self,
         data_loader: DataLoader,
         model: nn.Module,
+        num_classes: int,
+        num_samples_per_class: int = 5,
         use_amp: bool = False,
-        num_samples_per_class: int | None = None,
-        num_cols: int | None = None,
-        figsize: tuple[float, float] | None = None,
-    ) -> None:
-        """Visualize model predictions with automatic adjustment for many classes."""
-        dataset = data_loader.dataset
-        if not isinstance(dataset, ClassificationDataset):
-            raise ValueError("Dataset must be a ClassificationDataset")
+    ) -> PredictionData:
+        """Get predictions from the model.
 
-        model = model.to(DEVICE)
-        model.eval()
+        Args:
+            data_loader: DataLoader for inference
+            model: Model to use for predictions
+            num_classes: Number of classes
+            num_samples_per_class: Number of samples to collect per class
+            use_amp: Whether to use automatic mixed precision
 
-        class_names = dataset.get_class_names()
-        num_classes = len(class_names)
-
-        # Auto-adjust parameters
-        if num_samples_per_class is None:
-            if num_classes > 50:
-                num_samples_per_class = 2
-            elif num_classes > 30:
-                num_samples_per_class = 3
-            else:
-                num_samples_per_class = 5
-
-        if num_cols is None:
-            num_cols = num_samples_per_class
-
-        # Collect samples
-        samples_by_class = {
+        Returns:
+            Dictionary containing prediction data per class
+        """
+        samples_by_class: PredictionData = {
             i: {"images": [], "true_labels": [], "pred_labels": []}
             for i in range(num_classes)
         }
 
+        model = model.to(DEVICE)
+        model.eval()
+
         with torch.inference_mode():
             for data, target in tqdm(data_loader, desc="Collecting predictions"):
-                data = data.to(DEVICE)
-
-                if isinstance(target, tuple):
-                    target = target[0]
+                data, target = data.to(DEVICE), target.to(DEVICE)
 
                 with autocast(device_type=DEVICE, enabled=use_amp):
                     output = model(data)
-                    pred = output.argmax(dim=1)
+                    pred = output.argmax(dim=1, keepdim=True)
 
-                batch_images = data.cpu().numpy()
-                batch_true = target.cpu().numpy()
-                batch_pred = pred.cpu().numpy()
-
+                # Process batch
                 for img, true_lbl, pred_lbl in zip(
-                    batch_images, batch_true, batch_pred, strict=False
+                    data.cpu().numpy(),
+                    target.cpu().numpy(),
+                    pred.cpu().numpy(),
+                    strict=False,
                 ):
+                    true_lbl, pred_lbl = int(true_lbl), int(pred_lbl[0])
+
                     if (
                         len(samples_by_class[true_lbl]["images"])
                         < num_samples_per_class
@@ -365,34 +390,40 @@ class ClassificationVisualizer(BaseVisualizer):
                         samples_by_class[true_lbl]["true_labels"].append(true_lbl)
                         samples_by_class[true_lbl]["pred_labels"].append(pred_lbl)
 
+                # Check if we have enough samples for all classes
                 if all(
                     len(samples_by_class[i]["images"]) >= num_samples_per_class
                     for i in range(num_classes)
                 ):
                     break
 
-        # Flatten samples
-        images = []
-        true_labels = []
-        pred_labels = []
+        return samples_by_class
 
-        for class_idx in range(num_classes):
-            images.extend(samples_by_class[class_idx]["images"])
-            true_labels.extend(samples_by_class[class_idx]["true_labels"])
-            pred_labels.extend(samples_by_class[class_idx]["pred_labels"])
+    def _create_prediction_grid(
+        self,
+        samples_by_class: PredictionData,
+        class_names: list[str],
+        num_samples_per_class: int,
+    ) -> tuple[plt.Figure, np.ndarray]:
+        """Create a grid for prediction visualization.
 
-        # Calculate grid dimensions
-        total_samples = len(images)
-        num_rows = (total_samples + num_cols - 1) // num_cols
+        Args:
+            samples_by_class: Prediction data per class
+            class_names: List of class names
+            num_samples_per_class: Number of samples per class
 
-        # Calculate optimal size
-        if figsize is None and total_samples > 0:
-            sample_img = ClassificationVisualizer._denormalize_image(images[0])
-            figsize = ClassificationVisualizer._calculate_optimal_figsize(
-                total_samples, num_cols, sample_img.shape[:2], min_cell_size=2.0
-            )
+        Returns:
+            Figure and axes array
+        """
+        num_classes = len(class_names)
+        figsize = self._calculate_optimal_figsize(
+            num_rows=num_samples_per_class, num_cols=num_classes, scale_factor=1.3
+        )
 
-        fig, axes = plt.subplots(num_rows, num_cols, figsize=figsize)
+        fig, axes = plt.subplots(
+            num_samples_per_class, num_classes, figsize=figsize, squeeze=False
+        )
+
         fig.suptitle(
             "Model Predictions (Green=Correct, Red=Wrong)",
             fontsize=16,
@@ -400,84 +431,107 @@ class ClassificationVisualizer(BaseVisualizer):
             y=0.995,
         )
 
-        if num_rows == 1:
-            axes = axes.reshape(1, -1)
-        if num_cols == 1:
-            axes = axes.reshape(-1, 1)
+        return fig, axes
 
-        # Adjust font size
-        if num_classes > 50:
-            title_fontsize = 5
-        elif num_classes > 30:
-            title_fontsize = 7
-        else:
-            title_fontsize = 9
+    def _add_border_to_image(
+        self, image: np.ndarray, border_color: str, border_width: int = 6
+    ) -> np.ndarray:
+        """Add a colored border to an image.
 
-        for idx in range(num_rows * num_cols):
-            row = idx // num_cols
-            col = idx % num_cols
-            ax = axes[row, col]
+        Args:
+            image: Input image
+            border_color: Border color ('green' or 'red')
+            border_width: Width of the border in pixels
 
-            if idx < len(images):
-                image = ClassificationVisualizer._denormalize_image(images[idx])
-                true_label = true_labels[idx]
-                pred_label = pred_labels[idx]
+        Returns:
+            Image with border
+        """
+        border_rgb = [0, 255, 0] if border_color == "green" else [255, 0, 0]
 
-                is_correct = true_label == pred_label
-                border_color = "green" if is_correct else "red"
+        padded_image = np.pad(
+            image,
+            (
+                (border_width, border_width),
+                (border_width, border_width),
+                (0, 0),
+            ),
+            mode="constant",
+            constant_values=0,
+        )
 
-                # Add border by creating a larger image with padding
-                border_width = 6
+        # Set border pixels
+        padded_image[:border_width, :] = border_rgb  # top
+        padded_image[-border_width:, :] = border_rgb  # bottom
+        padded_image[:, :border_width] = border_rgb  # left
+        padded_image[:, -border_width:] = border_rgb  # right
 
-                # Create padded image with border color
-                border_rgb = [0, 255, 0] if border_color == "green" else [255, 0, 0]
+        return padded_image
 
-                # Create image with border (padding)
-                padded_image = np.pad(
-                    image,
-                    (
-                        (border_width, border_width),
-                        (border_width, border_width),
-                        (0, 0),
-                    ),
-                    mode="constant",
-                    constant_values=0,
-                )
+    def visualize_predictions(
+        self,
+        data_loader: DataLoader,
+        model: nn.Module,
+        num_samples_per_class: int = 5,
+        use_amp: bool = False,
+    ) -> None:
+        """Visualize model predictions with automatic adjustment for many classes.
 
-                # Set border pixels to border color
-                padded_image[:border_width, :] = border_rgb  # top
-                padded_image[-border_width:, :] = border_rgb  # bottom
-                padded_image[:, :border_width] = border_rgb  # left
-                padded_image[:, -border_width:] = border_rgb  # right
+        Args:
+            data_loader: DataLoader for inference
+            model: Model to visualize predictions for
+            num_samples_per_class: Number of samples per class to show
+            use_amp: Whether to use automatic mixed precision
+        """
+        dataset = self._validate_dataset(data_loader)
+        class_names = dataset.get_class_names()
+        num_classes = len(class_names)
 
-                ax.imshow(padded_image)
+        # Get predictions
+        samples_by_class = self._get_predictions(
+            data_loader, model, num_classes, num_samples_per_class, use_amp
+        )
 
-                title_text = (
-                    f"T: {class_names[true_label]}\nP: {class_names[pred_label]}"
-                )
-                ax.set_title(
-                    title_text, fontsize=title_fontsize, color=border_color, pad=2
-                )
-            else:
+        # Create visualization
+        fig, axes = self._create_prediction_grid(
+            samples_by_class, class_names, num_samples_per_class
+        )
+
+        # Plot each sample
+        for col, class_idx in enumerate(range(num_classes)):
+            class_data = samples_by_class[class_idx]
+            num_samples = len(class_data["images"])
+
+            for row in range(num_samples_per_class):
+                ax = axes[row, col]
+
+                if row < num_samples:
+                    image = class_data["images"][row]
+                    true_label = class_data["true_labels"][row]
+                    pred_label = class_data["pred_labels"][row]
+
+                    # Process image
+                    image = self._denormalize_image(image)
+                    is_correct = true_label == pred_label
+                    border_color = "green" if is_correct else "red"
+
+                    image_with_border = self._add_border_to_image(image, border_color)
+                    ax.imshow(image_with_border)
+
+                    # Add title with true and predicted labels
+                    title_text = (
+                        f"T: {class_names[true_label]}\nP: {class_names[pred_label]}"
+                    )
+                    ax.set_title(title_text, fontsize=10, color=border_color, pad=2)
+                else:
+                    ax.axis("off")
+
                 ax.axis("off")
-
-            ax.set_xticks([])
-            ax.set_yticks([])
 
         plt.tight_layout()
         save_path = self.save_dir / "predictions.png"
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
-
         logger.info(f"Predictions visualization saved to {save_path}")
-
-        correct = sum(
-            1 for t, p in zip(true_labels, pred_labels, strict=False) if t == p
-        )
-        accuracy = 100.0 * correct / len(true_labels)
-        logger.info(
-            f"Accuracy on visualized samples: {accuracy:.2f}% ({correct}/{len(true_labels)})"
-        )
 
     def visualize_metrics(
         self,
@@ -488,26 +542,37 @@ class ClassificationVisualizer(BaseVisualizer):
         figsize_curves: tuple[float, float] = (12, 5),
         figsize_cm: tuple[float, float] | None = None,
     ) -> None:
-        """Visualize training metrics with improved confusion matrix for many classes."""
-        # Plot loss curves
+        """Visualize training metrics with improved confusion matrix for many classes.
+
+        Args:
+            metrics: Metrics object containing training history
+            data_loader: Optional DataLoader for confusion matrix
+            model: Optional model for confusion matrix
+            use_amp: Whether to use automatic mixed precision
+            figsize_curves: Figure size for loss/accuracy curves
+            figsize_cm: Figure size for confusion matrix (auto-calculated if None)
+        """
+        # Plot training curves
         self._plot_loss_curves(metrics, figsize_curves)
 
-        # Plot accuracy curves
         if hasattr(metrics, "accuracies"):
             self._plot_accuracy_curves(metrics, figsize_curves)
 
-        # Plot confusion matrix with dynamic sizing
+        # Plot confusion matrix if data and model are provided
         if data_loader is not None and model is not None:
             dataset = data_loader.dataset
             if isinstance(dataset, ClassificationDataset):
                 num_classes = len(dataset.get_class_names())
 
-                # Calculate optimal confusion matrix size
                 if figsize_cm is None:
                     cm_size = max(12, min(40, num_classes * 0.4))
                     figsize_cm = (cm_size, cm_size * 0.9)
 
                 self._plot_confusion_matrix(data_loader, model, use_amp, figsize_cm)
+            else:
+                logger.warning(
+                    "Skipping confusion matrix - dataset is not ClassificationDataset"
+                )
         else:
             logger.info("Skipping confusion matrix (requires data_loader and model)")
 
@@ -523,15 +588,44 @@ class ClassificationVisualizer(BaseVisualizer):
         """Visualize per-class accuracy as a bar plot.
 
         Args:
-            data_loader: DataLoader for evaluation.
-            model: The model to evaluate.
-            use_amp: Whether to use automatic mixed precision.
-            figsize: Figure size (auto-calculated if None).
+            data_loader: DataLoader for evaluation
+            model: Model to evaluate
+            use_amp: Whether to use automatic mixed precision
+            figsize: Figure size (auto-calculated if None)
         """
-        dataset = data_loader.dataset
-        if not isinstance(dataset, ClassificationDataset):
-            raise ValueError("Dataset must be a ClassificationDataset")
+        dataset = self._validate_dataset(data_loader)
+        class_names = dataset.get_class_names()
+        num_classes = len(class_names)
 
+        # Get predictions
+        all_predictions, all_targets = self._get_all_predictions(
+            data_loader, model, use_amp
+        )
+
+        # Calculate per-class accuracy
+        per_class_acc = self._calculate_per_class_accuracy(
+            all_targets, all_predictions, num_classes
+        )
+
+        # Create visualization
+        self._plot_per_class_accuracy(per_class_acc, class_names, figsize)
+
+    def _get_all_predictions(
+        self,
+        data_loader: DataLoader,
+        model: nn.Module,
+        use_amp: bool,
+    ) -> tuple[list[int], list[int]]:
+        """Get all predictions and targets from the model.
+
+        Args:
+            data_loader: DataLoader for inference
+            model: Model to evaluate
+            use_amp: Whether to use automatic mixed precision
+
+        Returns:
+            Tuple of (predictions, targets)
+        """
         model = model.to(DEVICE)
         model.eval()
 
@@ -545,26 +639,54 @@ class ClassificationVisualizer(BaseVisualizer):
                 with autocast(device_type=DEVICE, enabled=use_amp):
                     output = model(data)
 
-                pred = output.argmax(dim=1, keepdim=True)
+                pred = output.argmax(dim=1)
+                all_predictions.extend(pred.cpu().numpy().tolist())
+                all_targets.extend(target.cpu().numpy().tolist())
 
-                all_predictions.extend(pred.cpu().numpy().flatten())
-                all_targets.extend(target.cpu().numpy())
+        return all_predictions, all_targets
 
-        class_names = dataset.get_class_names()
-        cm = confusion_matrix(
-            all_targets, all_predictions, labels=np.arange(len(class_names))
-        )
-        num_classes = len(class_names)
+    def _calculate_per_class_accuracy(
+        self,
+        targets: list[int],
+        predictions: list[int],
+        num_classes: int,
+    ) -> np.ndarray:
+        """Calculate per-class accuracy.
+
+        Args:
+            targets: True labels
+            predictions: Predicted labels
+            num_classes: Number of classes
+
+        Returns:
+            Array of per-class accuracies in percentage
+        """
+        cm = confusion_matrix(targets, predictions, labels=np.arange(num_classes))
 
         with np.errstate(divide="ignore", invalid="ignore"):
             per_class_acc = cm.diagonal() / cm.sum(axis=1)
-            per_class_acc[np.isnan(per_class_acc)] = 0.0
-        per_class_acc *= 100.0
+            per_class_acc = np.nan_to_num(per_class_acc, nan=0.0)
+
+        return per_class_acc * 100.0
+
+    def _plot_per_class_accuracy(
+        self,
+        per_class_acc: np.ndarray,
+        class_names: list[str],
+        figsize: tuple[float, float] | None,
+    ) -> None:
+        """Plot per-class accuracy bar chart.
+
+        Args:
+            per_class_acc: Per-class accuracy values
+            class_names: List of class names
+            figsize: Figure size (auto-calculated if None)
+        """
+        num_classes = len(class_names)
 
         if figsize is None:
-            bar_width = max(12, num_classes * 0.4)
-            bar_width = min(bar_width, 40)
-            figsize = (bar_width, 8)
+            fig_width = max(12, min(40, num_classes * 0.4))
+            figsize = (fig_width, 8)
 
         fig, ax = plt.subplots(figsize=figsize)
         colors = sns.color_palette("viridis", num_classes)
@@ -574,19 +696,13 @@ class ClassificationVisualizer(BaseVisualizer):
         ax.set_ylim(0, 105)
         ax.set_title("Per-Class Accuracy", fontsize=14, fontweight="bold")
         ax.grid(axis="y", alpha=0.3)
+
+        # Dynamic tick formatting
+        tick_fontsize = self._get_tick_fontsize(num_classes)
         ax.set_xticks(range(num_classes))
-
-        if num_classes > 70:
-            tick_fontsize = 4
-        elif num_classes > 50:
-            tick_fontsize = 5
-        elif num_classes > 30:
-            tick_fontsize = 6
-        else:
-            tick_fontsize = 8
-
         ax.set_xticklabels(class_names, rotation=90, ha="right", fontsize=tick_fontsize)
 
+        # Add value labels for reasonable number of classes
         if num_classes <= 30:
             for bar in bars:
                 height = bar.get_height()
@@ -596,20 +712,24 @@ class ClassificationVisualizer(BaseVisualizer):
                     f"{height:.1f}",
                     ha="center",
                     va="bottom",
-                    fontsize=tick_fontsize - 1 if tick_fontsize > 4 else 4,
+                    fontsize=max(6, tick_fontsize - 2),
                 )
 
         plt.tight_layout()
         save_path = self.save_dir / "per_class_accuracy.png"
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
-
         logger.info(f"Per-class accuracy plot saved to {save_path}")
 
     def _plot_loss_curves(
         self, metrics: BaseMetrics, figsize: tuple[float, float]
     ) -> None:
-        """Plot loss curves."""
+        """Plot loss curves.
+
+        Args:
+            metrics: Metrics object containing loss history
+            figsize: Figure size
+        """
         fig, ax = plt.subplots(figsize=figsize)
 
         for key, values in metrics.losses.items():
@@ -626,13 +746,17 @@ class ClassificationVisualizer(BaseVisualizer):
         save_path = self.save_dir / "loss_curves.png"
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
-
-        logger.info(f"Loss curves saved to {save_path}")
+        logger.debug(f"Loss curves saved to {save_path}")
 
     def _plot_accuracy_curves(
         self, metrics: BaseMetrics, figsize: tuple[float, float]
     ) -> None:
-        """Plot accuracy curves."""
+        """Plot accuracy curves.
+
+        Args:
+            metrics: Metrics object containing accuracy history
+            figsize: Figure size
+        """
         fig, ax = plt.subplots(figsize=figsize)
 
         accuracies = getattr(metrics, "accuracies", {})
@@ -650,8 +774,7 @@ class ClassificationVisualizer(BaseVisualizer):
         save_path = self.save_dir / "accuracy_curves.png"
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
-
-        logger.info(f"Accuracy curves saved to {save_path}")
+        logger.debug(f"Accuracy curves saved to {save_path}")
 
     def _plot_confusion_matrix(
         self,
@@ -660,73 +783,46 @@ class ClassificationVisualizer(BaseVisualizer):
         use_amp: bool,
         figsize: tuple[float, float],
     ) -> None:
-        """Plot confusion matrix with improved handling for many classes."""
-        dataset = data_loader.dataset
-        if not isinstance(dataset, ClassificationDataset):
-            raise ValueError("Dataset must be a ClassificationDataset")
+        """Plot confusion matrix with improved handling for many classes.
 
-        model = model.to(DEVICE)
-        model.eval()
-
-        all_predictions = []
-        all_targets = []
-
-        with torch.inference_mode():
-            for data, target in tqdm(data_loader, desc="Computing confusion matrix"):
-                data = data.to(DEVICE)
-
-                if isinstance(target, tuple):
-                    target = target[0]
-
-                with autocast(device_type=DEVICE, enabled=use_amp):
-                    output = model(data)
-                    pred = output.argmax(dim=1)
-
-                all_predictions.extend(pred.cpu().numpy())
-                all_targets.extend(target.cpu().numpy())
-
-        cm = confusion_matrix(all_targets, all_predictions)
+        Args:
+            data_loader: DataLoader for evaluation
+            model: Model to evaluate
+            use_amp: Whether to use automatic mixed precision
+            figsize: Figure size for the confusion matrix
+        """
+        dataset = self._validate_dataset(data_loader)
         class_names = dataset.get_class_names()
         num_classes = len(class_names)
 
-        # Create improved confusion matrix plot
+        # Get predictions
+        all_predictions, all_targets = self._get_all_predictions(
+            data_loader, model, use_amp
+        )
+
+        # Create confusion matrix
+        cm = confusion_matrix(all_targets, all_predictions)
+
+        # Create plot
         fig, ax = plt.subplots(figsize=figsize)
 
         # For many classes, don't show annotations
-        if num_classes > 30:
-            sns.heatmap(
-                cm,
-                xticklabels=class_names,
-                yticklabels=class_names,
-                cmap="Blues",
-                ax=ax,
-                cbar=True,
-                annot=False,  # Wyłącz liczby
-                square=True,
-            )
-        else:
-            sns.heatmap(
-                cm,
-                xticklabels=class_names,
-                yticklabels=class_names,
-                annot=True,
-                fmt="d",
-                cmap="Blues",
-                ax=ax,
-                cbar=True,
-                square=True,
-            )
+        show_annot = num_classes <= 30
 
-        # Adjust tick label sizes
-        if num_classes > 70:
-            tick_fontsize = 4
-        elif num_classes > 50:
-            tick_fontsize = 5
-        elif num_classes > 30:
-            tick_fontsize = 6
-        else:
-            tick_fontsize = 8
+        sns.heatmap(
+            cm,
+            xticklabels=class_names,
+            yticklabels=class_names,
+            annot=show_annot,
+            fmt="d",
+            cmap="Blues",
+            ax=ax,
+            cbar=True,
+            square=True,
+        )
 
+        # Adjust tick labels
+        tick_fontsize = self._get_tick_fontsize(num_classes)
         ax.set_xticklabels(
             ax.get_xticklabels(), rotation=90, ha="right", fontsize=tick_fontsize
         )
@@ -738,12 +834,9 @@ class ClassificationVisualizer(BaseVisualizer):
 
         plt.tight_layout()
 
-        # Save both PNG and SVG for scalability
         save_path_png = self.save_dir / "confusion_matrix.png"
-        save_path_svg = self.save_dir / "confusion_matrix.svg"
 
         plt.savefig(save_path_png, dpi=300, bbox_inches="tight")
-        plt.savefig(save_path_svg, format="svg", bbox_inches="tight")
         plt.close()
 
-        logger.info(f"Confusion matrix saved to {save_path_png} and {save_path_svg}")
+        logger.info(f"Confusion matrix saved to {save_path_png}")

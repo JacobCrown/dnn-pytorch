@@ -10,7 +10,6 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from src.common.config import BaseTrainingConfig
-from src.common.enums import TaskType
 from src.common.utils import DEVICE
 from src.core.metrics import BaseMetrics
 from src.core.model_manager import BaseModelManager
@@ -22,7 +21,6 @@ logger = logging.getLogger(__name__)
 class BaseTrainer[VisualizerType: BaseVisualizer, MetricsType: BaseMetrics](ABC):
     """Trainer class for classification models."""
 
-    _TASK_TYPE: TaskType = TaskType.UNDEFINED
     metrics_cls: type[MetricsType]
     visualizer_cls: type[VisualizerType]
 
@@ -105,45 +103,6 @@ class BaseTrainer[VisualizerType: BaseVisualizer, MetricsType: BaseMetrics](ABC)
         # Resume from checkpoint if specified
         if self.resume_from_checkpoint_path:
             self._resume_from_checkpoint()
-
-        self._check_all_vars_initialized()
-
-    def _check_all_vars_initialized(self) -> None:
-        """Check if all required variables are initialized."""
-        if self._TASK_TYPE == TaskType.UNDEFINED:
-            raise ValueError("Task type is not defined")
-        if self.model_manager is None:
-            raise ValueError("Model manager is not defined")
-        if self.train_loader is None:
-            raise ValueError("Training data loader is not defined")
-        if self.val_loader is None:
-            raise ValueError("Validation data loader is not defined")
-        if self.criterion is None:
-            raise ValueError("Loss function is not defined")
-        if self.optimizer is None:
-            raise ValueError("Optimizer is not defined")
-        if self.scheduler is None:
-            raise ValueError("Scheduler is not defined")
-        if (
-            self.resume_from_checkpoint_path is not None
-            and isinstance(self.resume_from_checkpoint_path, Path)
-            and not Path(self.resume_from_checkpoint_path).exists()
-        ):
-            raise FileNotFoundError(
-                f"Checkpoint file not found: {self.resume_from_checkpoint_path}"
-            )
-        if self.grad_clip is not None and not isinstance(self.grad_clip, int | float):
-            raise ValueError("Gradient clipping must be a number")
-        if self.scaler is None:
-            raise ValueError("Scaler is not defined")
-        if self.writer is None:
-            raise ValueError("Writer is not defined")
-        if self.current_epoch is None:
-            raise ValueError("Current epoch is not defined")
-        if self.num_epochs is None:
-            raise ValueError("Number of epochs is not defined")
-        if self.metrics is None:
-            raise ValueError("Metrics are not defined")
 
     def _log_gpu_memory(self) -> None:
         """Log GPU memory usage if available."""

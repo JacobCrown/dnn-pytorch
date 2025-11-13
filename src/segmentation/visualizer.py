@@ -13,7 +13,6 @@ from torch.amp import autocast  # type: ignore[reportMissingImports]
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.common.enums import TaskType
 from src.common.utils import DEVICE
 from src.core.metrics import BaseMetrics
 from src.core.visualizer import BaseVisualizer
@@ -24,8 +23,6 @@ logger = logging.getLogger(__name__)
 
 class SegmentationVisualizer(BaseVisualizer):
     """Visualizer class for segmentation tasks."""
-
-    _TASK_TYPE: TaskType = TaskType.SEGMENTATION
 
     @staticmethod
     def _create_color_map(

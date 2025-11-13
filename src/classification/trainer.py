@@ -14,7 +14,6 @@ from src.classification.config import ClassificationConfig
 from src.classification.metrics import ClassificationMetrics
 from src.classification.model_manager import ClassificationModelManager
 from src.classification.visualizer import ClassificationVisualizer
-from src.common.enums import TaskType
 from src.common.utils import DEVICE
 from src.core.trainer import BaseTrainer
 
@@ -26,7 +25,6 @@ class ClassificationTrainer(
 ):
     """Trainer class for classification models."""
 
-    _TASK_TYPE: TaskType = TaskType.CLASSIFICATION
     metrics_cls = ClassificationMetrics
     visualizer_cls = ClassificationVisualizer
 
@@ -313,7 +311,7 @@ class ClassificationTrainer(
         dataset_name = dataset_path.name
         return (
             Path(self.cfg.train.root_dir)
-            / self._TASK_TYPE.value
+            / "classification"
             / dataset_name
             / f"{model}_{height}x{width}_{epochs}epochs_{bs}bs"
         )

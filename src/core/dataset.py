@@ -7,8 +7,6 @@ import cv2
 import numpy as np
 from torch.utils.data import Dataset
 
-from src.common.enums import TaskType
-
 
 class BaseDataset(Dataset):
     """Base PyTorch Dataset class that can be extended for different task types.
@@ -23,7 +21,6 @@ class BaseDataset(Dataset):
         transforms: Any,
         extensions: list[str] | None = None,
         max_samples: int | None = None,
-        task_type: TaskType = TaskType.UNDEFINED,
     ):
         """Initialize the base dataset.
 
@@ -32,13 +29,11 @@ class BaseDataset(Dataset):
             transforms: Transforms to apply to images
             extensions: List of image file extensions to include
             max_samples: Maximum number of samples to load per class
-            task_type: Type of task this dataset is for
         """
         self.data_root = Path(data_root)
         self.transforms = transforms
         self.extensions = extensions or [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
         self.max_samples = max_samples
-        self.task_type = task_type
 
         # Validate data root exists
         if not self.data_root.exists():

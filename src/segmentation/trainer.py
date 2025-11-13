@@ -10,7 +10,6 @@ from torch.amp import autocast  # type: ignore[reportMissingImports]
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.common.enums import TaskType
 from src.common.utils import DEVICE
 from src.core.trainer import BaseTrainer
 from src.segmentation.config import SegmentationConfig
@@ -24,7 +23,6 @@ logger = logging.getLogger(__name__)
 class SegmentationTrainer(BaseTrainer[SegmentationVisualizer, SegmentationMetrics]):
     """Trainer class for segmentation models."""
 
-    _TASK_TYPE: TaskType = TaskType.SEGMENTATION
     metrics_cls = SegmentationMetrics
     visualizer_cls = SegmentationVisualizer
 
@@ -349,7 +347,7 @@ class SegmentationTrainer(BaseTrainer[SegmentationVisualizer, SegmentationMetric
         dataset_name = dataset_path.name
         return (
             Path(self.cfg.train.root_dir)
-            / self._TASK_TYPE.value
+            / "segmentation"
             / dataset_name
             / f"{arch}_{model}_{height}x{width}_{epochs}epochs_{bs}bs"
         )

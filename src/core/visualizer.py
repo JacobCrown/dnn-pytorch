@@ -7,7 +7,6 @@ import cv2
 import numpy as np
 from torch.utils.data import DataLoader
 
-from src.common.enums import TaskType
 from src.core.metrics import BaseMetrics
 
 
@@ -17,8 +16,6 @@ class BaseVisualizer(ABC):
     This class provides common functionality for visualizing data and metrics
     that can be shared across classification, segmentation, and other tasks.
     """
-
-    _TASK_TYPE: TaskType = TaskType.UNDEFINED
 
     def __init__(self, save_dir: Path):
         self.save_dir = save_dir

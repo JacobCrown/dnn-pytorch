@@ -1,14 +1,11 @@
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from src.common.enums import TaskType
-
 
 @dataclass
 class BaseMetrics:
     """Base metrics class for all tasks."""
 
-    task_type: TaskType = TaskType.UNDEFINED
     losses: dict[str, list[float]] = field(default_factory=dict)
 
     def __post_init__(self):

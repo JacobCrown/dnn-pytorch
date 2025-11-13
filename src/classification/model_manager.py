@@ -7,7 +7,6 @@ import albumentations as A
 import timm
 import torch
 import torch.nn as nn
-from albumentations.pytorch import ToTensorV2
 from timm.data.config import resolve_data_config
 
 from src.classification.config import ClassificationModelConfig
@@ -59,7 +58,7 @@ class ClassificationModelManager(BaseModelManager):
             [
                 A.Resize(height, width),
                 A.Normalize(mean=mean, std=std),
-                ToTensorV2(),
+                A.ToTensorV2(),
             ]
         )
 

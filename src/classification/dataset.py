@@ -4,7 +4,6 @@ from pathlib import Path
 import albumentations as A
 import torch
 
-from src.common.enums import TaskType
 from src.core.dataset import BaseDataset
 
 
@@ -48,7 +47,6 @@ class ClassificationDataset(BaseDataset):
             transforms=transforms,
             extensions=extensions,
             max_samples=max_samples,
-            task_type=TaskType.CLASSIFICATION,
         )
 
     def _build_samples(self) -> None:
