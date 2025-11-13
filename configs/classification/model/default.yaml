@@ -1,7 +1,7 @@
-name: "resnet34"
+name: "resnet18"
 num_classes: 92
 in_channels: 3
-pretrained: false
+pretrained: true
 dropout: 0.4
 width: 64
 height: 64

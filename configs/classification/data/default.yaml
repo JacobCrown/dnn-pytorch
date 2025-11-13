@@ -1,0 +1,7 @@
+root: "data/classification/polish-road-signs"
+train_dir: "train"
+val_dir: "test"
+test_dir: null
+extensions: [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
+# For debugging purposes, optional
+max_samples: null

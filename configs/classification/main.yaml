@@ -1,5 +1,3 @@
-# Base configuration for image classification experiments
-# This file composes core data & model settings with reusable train and augmentation configs.
 package: _global_
 
 defaults:

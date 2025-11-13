@@ -1,0 +1,7 @@
+name: "tiny_vit_5m_224"
+num_classes: 92
+in_channels: 3
+pretrained: false
+dropout: 0.2
+width: 64
+height: 64
