@@ -7,21 +7,18 @@ from typing import Self
 import albumentations as A
 import torch.nn as nn
 
+from src.common.config import BaseConfig
 from src.common.utils import DEVICE
 
 
-class BaseModelManager(ABC):
+class BaseModelManager[ModelConfigType: BaseConfig](ABC):
     """Base model manager class."""
 
-    def __init__(self) -> None:
+    def __init__(self, model_cfg) -> None:
         """Initialize the base model manager."""
         self.model = self.create_model().to(DEVICE)
         self.preprocessing = self.create_preprocessing()
-
-    @property
-    @abstractmethod
-    def model_cfg(self):
-        pass
+        self.model_cfg: ModelConfigType = model_cfg
 
     @abstractmethod
     def create_model(self) -> nn.Module:

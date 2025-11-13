@@ -1,14 +1,16 @@
 """Base dataset class for different task types."""
 
+from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
+import albumentations as A
 import cv2
 import numpy as np
 from torch.utils.data import Dataset
 
 
-class BaseDataset(Dataset):
+class BaseDataset(Dataset, ABC):
     """Base PyTorch Dataset class that can be extended for different task types.
 
     This class provides common functionality for image loading and preprocessing
@@ -18,7 +20,7 @@ class BaseDataset(Dataset):
     def __init__(
         self,
         data_root: str | Path,
-        transforms: Any,
+        transforms: A.Compose | None = None,
         extensions: list[str] | None = None,
         max_samples: int | None = None,
     ):
@@ -26,7 +28,7 @@ class BaseDataset(Dataset):
 
         Args:
             data_root: Root directory containing the data
-            transforms: Transforms to apply to images
+            transforms: Albumentations transforms to apply to images
             extensions: List of image file extensions to include
             max_samples: Maximum number of samples to load per class
         """
@@ -44,10 +46,6 @@ class BaseDataset(Dataset):
         # Build file paths and metadata
         self.samples = []
         self._build_samples()
-
-    def _build_samples(self) -> None:
-        """Build the list of samples. Override in subclasses for specific logic."""
-        raise NotImplementedError("Subclasses must implement _build_samples")
 
     @staticmethod
     def _load_image(file_path: str | Path) -> np.ndarray:
@@ -82,6 +80,10 @@ class BaseDataset(Dataset):
     def __len__(self) -> int:
         return len(self.samples)
 
-    def __getitem__(self, idx: int) -> Any:
-        """Get a sample from the dataset. Override in subclasses."""
-        raise NotImplementedError("Subclasses must implement __getitem__")
+    # ================================ Abstract Methods ================================
+
+    @abstractmethod
+    def _build_samples(self) -> None: ...
+
+    @abstractmethod
+    def __getitem__(self, idx: int) -> Any: ...

@@ -16,17 +16,12 @@ from src.core.model_manager import BaseModelManager
 logger = logging.getLogger(__name__)
 
 
-class ClassificationModelManager(BaseModelManager):
+class ClassificationModelManager(BaseModelManager[ClassificationModelConfig]):
     """Classification model class."""
 
     def __init__(self, cfg: ClassificationModelConfig):
         """Initialize the classification model."""
-        self._model_cfg = cfg
-        super().__init__()
-
-    @property
-    def model_cfg(self) -> ClassificationModelConfig:
-        return self._model_cfg
+        super().__init__(cfg)
 
     def create_model(self) -> nn.Module:
         return timm.create_model(

@@ -1,5 +1,5 @@
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, Self
 
 
 @dataclass
@@ -20,7 +20,7 @@ class BaseMetrics:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "BaseMetrics":
+    def from_dict(cls: type[Self], data: dict[str, Any]) -> Self:
         """Create an instance of the metrics class from a dictionary.
 
         Args:
@@ -29,7 +29,7 @@ class BaseMetrics:
         Returns:
             An instance of the metrics class
         """
-        instance = cls()
+        instance: Self = cls()
         for key, value in data.items():
             if hasattr(instance, key):
                 setattr(instance, key, value)

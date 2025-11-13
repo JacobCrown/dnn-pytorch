@@ -2,6 +2,8 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+import torch
+
 
 def setup_logging(log_name: str) -> logging.Logger:
     """Configure logging
@@ -45,3 +47,11 @@ def setup_logging(log_name: str) -> logging.Logger:
         logger.addHandler(file_handler)
 
     return logger
+
+
+def log_gpu_memory(logger: logging.Logger) -> None:
+    """Log GPU memory usage if available."""
+    if torch.cuda.is_available():
+        max_mem_allocated = torch.cuda.max_memory_allocated() / (1024**2)
+        logger.info(f"  Max GPU Memory Allocated: {max_mem_allocated:.2f} MB")
+        torch.cuda.reset_peak_memory_stats()
