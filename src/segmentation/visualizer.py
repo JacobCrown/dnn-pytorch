@@ -37,7 +37,7 @@ class SegmentationVisualizer(BaseVisualizer):
             Dictionary mapping class indices to RGB colors
         """
         color_map = {}
-        for rgb_color, class_idx in dataset.rgb_to_idx.items():
+        for rgb_color, class_idx in dataset.rgb_to_class_idx.items():
             color_map[class_idx] = rgb_color
         return color_map
 

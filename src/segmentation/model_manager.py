@@ -16,17 +16,12 @@ from src.segmentation.config import SegmentationModelConfig
 logger = logging.getLogger(__name__)
 
 
-class SegmentationModelManager(BaseModelManager):
+class SegmentationModelManager(BaseModelManager[SegmentationModelConfig]):
     """Segmentation model class."""
 
     def __init__(self, cfg: SegmentationModelConfig):
         """Initialize the segmentation model."""
-        self._model_cfg = cfg
-        super().__init__()
-
-    @property
-    def model_cfg(self) -> SegmentationModelConfig:
-        return self._model_cfg
+        super().__init__(cfg)
 
     def create_model(self) -> nn.Module:
         return smp.create_model(

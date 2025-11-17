@@ -10,6 +10,7 @@ from torch.amp import autocast  # type: ignore[reportMissingImports]
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from src.common.logging import log_gpu_memory
 from src.common.utils import DEVICE
 from src.core.trainer import BaseTrainer
 from src.segmentation.config import SegmentationConfig
@@ -20,7 +21,9 @@ from src.segmentation.visualizer import SegmentationVisualizer
 logger = logging.getLogger(__name__)
 
 
-class SegmentationTrainer(BaseTrainer[SegmentationVisualizer, SegmentationMetrics]):
+class SegmentationTrainer(
+    BaseTrainer[SegmentationVisualizer, SegmentationMetrics, SegmentationModelManager]
+):
     """Trainer class for segmentation models."""
 
     metrics_cls = SegmentationMetrics
@@ -49,7 +52,90 @@ class SegmentationTrainer(BaseTrainer[SegmentationVisualizer, SegmentationMetric
             test_loader=test_loader,
         )
 
-    def train_epoch(self) -> tuple[float, float]:
+    # ================================ Overridden Abstract Methods ================================
+
+    def _get_root_dir_path(self) -> Path:
+        """Get the path of the root directory."""
+        arch = self.cfg.model.architecture
+        model = self.cfg.model.encoder_name
+        height = self.cfg.model.height
+        width = self.cfg.model.width
+        epochs = self.cfg.train.epochs
+        bs = self.cfg.train.batch_size
+        dataset_path = Path(self.cfg.data.root)
+        dataset_name = dataset_path.name
+        return (
+            Path(self.cfg.train.root_dir)
+            / "segmentation"
+            / dataset_name
+            / f"{arch}_{model}_{height}x{width}_{epochs}epochs_{bs}bs"
+        )
+
+    def _visualize_pre_train(self) -> None:
+        """Visualize all aspects of training.
+
+        This method creates visualizations for:
+        - Example images (with and without augmentations)
+        - Data distribution (pixel counts per class)
+        """
+        logger.info("\n" + "=" * 50)
+        logger.info("GENERATING PRE-TRAIN VISUALIZATIONS")
+        logger.info("=" * 50)
+
+        # Visualize example images
+        logger.info("\n1. Visualizing example images...")
+        self.visualizer.visualize_example_images(
+            data_loader=self.train_loader,
+            num_samples=5,
+        )
+
+        # Visualize data distribution
+        logger.info("\n2. Visualizing data distribution...")
+        self.visualizer.visualize_data_distribution(
+            data_loader=self.train_loader,
+        )
+
+    def _visualize_post_train(self) -> None:
+        """Visualize all aspects of training.
+
+        This method creates visualizations for:
+        - Model predictions
+        - Training metrics (loss and mIoU curves)
+        """
+        logger.info("=" * 50)
+        logger.info("GENERATING POST-TRAIN VISUALIZATIONS")
+        logger.info("=" * 50)
+        # Visualize predictions (use test set if available, otherwise validation set)
+        logger.info("\n1. Visualizing predictions...")
+        prediction_loader = (
+            self.test_loader if self.test_loader is not None else self.val_loader
+        )
+        self.visualizer.visualize_predictions(
+            data_loader=prediction_loader,
+            model=self.model,
+            use_amp=self.use_amp,
+            num_samples=5,
+        )
+
+        # Visualize metrics
+        logger.info("\n2. Visualizing training metrics...")
+        self.visualizer.visualize_metrics(
+            metrics=self.metrics,
+        )
+
+        # Visualize per class metrics
+        logger.info("\n3. Visualizing per class metrics...")
+        self.visualizer.visualize_per_class_metrics(
+            data_loader=prediction_loader,
+            model=self.model,
+            use_amp=self.use_amp,
+        )
+
+        logger.info("\n" + "=" * 50)
+        logger.info(f"All visualizations saved to: {self.visualize_dir}")
+        logger.info("=" * 50)
+
+    def _train_epoch(self) -> tuple[float, float]:
         """Train for one epoch.
 
         Returns:
@@ -70,6 +156,11 @@ class SegmentationTrainer(BaseTrainer[SegmentationVisualizer, SegmentationMetric
                 output = self.model(data)
                 loss = self.criterion(output, target)
 
+            # Calculate mIoU
+            pred = output.argmax(dim=1, keepdim=True)
+            miou = self._calculate_iou(pred, target)
+            total_iou += miou
+
             if self.use_amp:
                 self.scaler.scale(loss).backward()
                 if self.grad_clip is not None:
@@ -89,11 +180,6 @@ class SegmentationTrainer(BaseTrainer[SegmentationVisualizer, SegmentationMetric
 
             total_loss += loss.item()
 
-            # Calculate mIoU
-            pred = output.argmax(dim=1)
-            miou = self._calculate_iou(pred, target)
-            total_iou += miou
-
             # Update progress bar
             pbar.set_postfix(
                 {
@@ -107,7 +193,68 @@ class SegmentationTrainer(BaseTrainer[SegmentationVisualizer, SegmentationMetric
 
         return avg_loss, avg_iou
 
-    def validate(self) -> tuple[float, float]:
+    def _train(
+        self,
+    ) -> None:
+        """Train the model for a specified number of epochs."""
+        patience_counter = 0
+        best_val_loss = float("inf")
+
+        for epoch in range(self.current_epoch, self.num_epochs):
+            self.current_epoch = epoch
+
+            # Training
+            train_loss, train_miou = self._train_epoch()
+            self.metrics.losses["train"].append(train_loss)
+            self.metrics.ious["train"].append(train_miou)
+
+            # Validation
+            val_loss, val_miou = self._validate()
+            self.metrics.losses["val"].append(val_loss)
+            self.metrics.ious["val"].append(val_miou)
+
+            # Learning rate scheduling
+            if self.scheduler is not None:
+                if isinstance(self.scheduler, optim.lr_scheduler.ReduceLROnPlateau):
+                    self.scheduler.step(val_loss)
+                else:
+                    self.scheduler.step()
+
+            # Logging
+            logger.info(f"Epoch {epoch + 1}/{self.num_epochs}:")
+            logger.info(f"  Train Loss: {train_loss:.4f}, Train mIoU: {train_miou:.4f}")
+            logger.info(f"  Val Loss: {val_loss:.4f}, Val mIoU: {val_miou:.4f}")
+
+            log_gpu_memory(logger)
+
+            # Always save last checkpoint
+            self._save_checkpoint("last.pth")
+
+            # Save best model when validation metric improves
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                self._save_checkpoint("best.pth")
+                patience_counter = 0
+            else:
+                patience_counter += 1
+
+            # Early stopping
+            if (
+                self.early_stopping_patience
+                and patience_counter >= self.early_stopping_patience
+            ):
+                logger.info(f"Early stopping triggered after {epoch + 1} epochs")
+                break
+
+        # Evaluate on test set if provided
+        if self.test_loader is not None:
+            logger.info("\n" + "=" * 50)
+            logger.info("FINAL TEST EVALUATION")
+            logger.info("=" * 50)
+            self._evaluate(self.test_loader)
+            logger.info("=" * 50)
+
+    def _validate(self) -> tuple[float, float]:
         """Validate the model.
 
         Returns:
@@ -128,7 +275,6 @@ class SegmentationTrainer(BaseTrainer[SegmentationVisualizer, SegmentationMetric
 
                 total_loss += loss.item()
 
-                # Calculate mIoU
                 pred = output.argmax(dim=1, keepdim=True)
                 iou = self._calculate_iou(pred, target)
                 total_iou += iou
@@ -137,76 +283,7 @@ class SegmentationTrainer(BaseTrainer[SegmentationVisualizer, SegmentationMetric
         avg_iou = total_iou / num_batches
         return avg_loss, avg_iou
 
-    def _train(
-        self,
-    ) -> None:
-        """Train the model for a specified number of epochs."""
-        patience_counter = 0
-        best_val_loss = float("inf")
-
-        for epoch in range(self.current_epoch, self.num_epochs):
-            self.current_epoch = epoch
-
-            # Training
-            train_loss, train_miou = self.train_epoch()
-            self.metrics.losses["train"].append(train_loss)
-            self.metrics.ious["train"].append(train_miou)
-
-            # Validation
-            val_loss, val_miou = self.validate()
-            self.metrics.losses["val"].append(val_loss)
-            self.metrics.ious["val"].append(val_miou)
-
-            # Learning rate scheduling
-            if self.scheduler is not None:
-                if isinstance(self.scheduler, optim.lr_scheduler.ReduceLROnPlateau):
-                    self.scheduler.step(val_loss)
-                else:
-                    self.scheduler.step()
-
-            # Logging
-            self.writer.add_scalar("Loss/Train", train_loss, epoch)
-            self.writer.add_scalar("Loss/Val", val_loss, epoch)
-            self.writer.add_scalar("mIoU/Train", train_miou, epoch)
-            self.writer.add_scalar("mIoU/Val", val_miou, epoch)
-            self.writer.add_scalar("LR", self.optimizer.param_groups[0]["lr"], epoch)
-
-            logger.info(f"Epoch {epoch + 1}/{self.num_epochs}:")
-            logger.info(f"  Train Loss: {train_loss:.4f}, Train mIoU: {train_miou:.4f}")
-            logger.info(f"  Val Loss: {val_loss:.4f}, Val mIoU: {val_miou:.4f}")
-
-            self._log_gpu_memory()
-
-            # Always save last checkpoint
-            self.save_checkpoint("last.pth")
-
-            # Save best model when validation metric improves
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                self.save_checkpoint("best.pth")
-                patience_counter = 0
-            else:
-                patience_counter += 1
-
-            # Early stopping
-            if (
-                self.early_stopping_patience
-                and patience_counter >= self.early_stopping_patience
-            ):
-                logger.info(f"Early stopping triggered after {epoch + 1} epochs")
-                break
-
-        self.writer.close()
-
-        # Evaluate on test set if provided
-        if self.test_loader is not None:
-            logger.info("\n" + "=" * 50)
-            logger.info("FINAL TEST EVALUATION")
-            logger.info("=" * 50)
-            self.evaluate(self.test_loader)
-            logger.info("=" * 50)
-
-    def evaluate(self, test_loader: DataLoader) -> None:
+    def _evaluate(self, test_loader: DataLoader) -> None:
         """Evaluate the model on test data."""
         self.model.eval()
         total_loss = 0.0
@@ -221,10 +298,11 @@ class SegmentationTrainer(BaseTrainer[SegmentationVisualizer, SegmentationMetric
                     output = self.model(data)
                     loss = self.criterion(output, target)
 
-                total_loss += loss.item()
                 pred = output.argmax(dim=1, keepdim=True)
                 iou = self._calculate_iou(pred, target)
                 total_iou += iou
+
+                total_loss += loss.item()
 
         avg_loss = total_loss / num_batches
         avg_iou = total_iou / num_batches
@@ -232,6 +310,43 @@ class SegmentationTrainer(BaseTrainer[SegmentationVisualizer, SegmentationMetric
         logger.info("Test Results:")
         logger.info(f"  Loss: {avg_loss:.4f}")
         logger.info(f"  mIoU: {avg_iou:.4f}")
+
+    def _create_checkpoint_task_specific(self) -> dict:
+        return {
+            "class_names": self.train_loader.dataset.get_class_names(),
+            "class_idx_to_rgb": self.train_loader.dataset.class_idx_to_rgb,
+            "class_idx_to_name": self.train_loader.dataset.class_idx_to_name,
+        }
+
+    def _load_checkpoint_task_specific(self, checkpoint: dict) -> None:
+        if "class_names" in checkpoint:
+            checkpoint_class_names = checkpoint["class_names"]
+            if checkpoint_class_names != self.train_loader.dataset.get_class_names():
+                raise ValueError(
+                    f"Class names in checkpoint ({checkpoint_class_names}) do not match the class names in the trainer ({self.train_loader.dataset.get_class_names()})"
+                )
+        else:
+            raise ValueError("Class names not found in checkpoint")
+        if "class_idx_to_rgb" in checkpoint:
+            checkpoint_class_idx_to_rgb = checkpoint["class_idx_to_rgb"]
+            if (
+                checkpoint_class_idx_to_rgb
+                != self.train_loader.dataset.class_idx_to_rgb
+            ):
+                raise ValueError(
+                    f"Class idx to rgb in checkpoint ({checkpoint_class_idx_to_rgb}) do not match the class idx to rgb in the trainer ({self.train_loader.dataset.class_idx_to_rgb})"
+                )
+        if "class_idx_to_name" in checkpoint:
+            checkpoint_class_idx_to_name = checkpoint["class_idx_to_name"]
+            if (
+                checkpoint_class_idx_to_name
+                != self.train_loader.dataset.class_idx_to_name
+            ):
+                raise ValueError(
+                    f"Class idx to name in checkpoint ({checkpoint_class_idx_to_name}) do not match the class idx to name in the trainer ({self.train_loader.dataset.class_idx_to_name})"
+                )
+
+    # ================================ Helper Methods ================================
 
     def _calculate_iou(self, pred: torch.Tensor, target: torch.Tensor) -> float:
         """Calculate the Intersection over Union for a batch using a vectorized approach.
@@ -270,84 +385,3 @@ class SegmentationTrainer(BaseTrainer[SegmentationVisualizer, SegmentationMetric
         miou = valid_ious.mean().item() if valid_ious.numel() > 0 else 0.0
 
         return miou
-
-    def visualize_pre_train(self) -> None:
-        """Visualize all aspects of training.
-
-        This method creates visualizations for:
-        - Example images (with and without augmentations)
-        - Data distribution (pixel counts per class)
-        """
-        logger.info("\n" + "=" * 50)
-        logger.info("GENERATING PRE-TRAIN VISUALIZATIONS")
-        logger.info("=" * 50)
-
-        # Visualize example images
-        logger.info("\n1. Visualizing example images...")
-        self.visualizer.visualize_example_images(
-            data_loader=self.train_loader,
-            num_samples=4,
-        )
-
-        # Visualize data distribution
-        logger.info("\n2. Visualizing data distribution...")
-        self.visualizer.visualize_data_distribution(
-            data_loader=self.train_loader,
-        )
-
-    def visualize_post_train(self) -> None:
-        """Visualize all aspects of training.
-
-        This method creates visualizations for:
-        - Model predictions
-        - Training metrics (loss and mIoU curves)
-        """
-        logger.info("=" * 50)
-        logger.info("GENERATING POST-TRAIN VISUALIZATIONS")
-        logger.info("=" * 50)
-        # Visualize predictions (use test set if available, otherwise validation set)
-        logger.info("\n1. Visualizing predictions...")
-        prediction_loader = (
-            self.test_loader if self.test_loader is not None else self.val_loader
-        )
-        self.visualizer.visualize_predictions(
-            data_loader=prediction_loader,
-            model=self.model,
-            use_amp=self.use_amp,
-            num_samples=4,
-        )
-
-        # Visualize metrics
-        logger.info("\n2. Visualizing training metrics...")
-        self.visualizer.visualize_metrics(
-            metrics=self.metrics,
-        )
-
-        # Visualize per class metrics
-        logger.info("\n3. Visualizing per class metrics...")
-        self.visualizer.visualize_per_class_metrics(
-            data_loader=prediction_loader,
-            model=self.model,
-            use_amp=self.use_amp,
-        )
-
-        logger.info("\n" + "=" * 50)
-        logger.info(f"All visualizations saved to: {self.visualize_dir}")
-        logger.info("=" * 50)
-
-    def get_root_dir_path(self) -> Path:
-        """Get the path of the root directory."""
-        arch = self.cfg.model.architecture
-        model = self.cfg.model.encoder_name
-        height = self.cfg.model.height
-        width = self.cfg.model.width
-        epochs = self.cfg.train.epochs
-        bs = self.cfg.train.batch_size
-        dataset_path = Path(self.cfg.data.root)
-        dataset_name = dataset_path.name
-        return (
-            Path(self.cfg.train.root_dir)
-            / "segmentation"
-            / dataset_name
-            / f"{arch}_{model}_{height}x{width}_{epochs}epochs_{bs}bs"
-        )

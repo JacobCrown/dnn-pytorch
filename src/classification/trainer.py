@@ -317,7 +317,7 @@ class ClassificationTrainer(
 
     def _create_checkpoint_task_specific(self) -> dict:
         return {
-            "class_names": self.train_loader.dataset.get_class_names(),
+            "class_names": self.class_names,
         }
 
     def _load_checkpoint_task_specific(self, checkpoint: dict) -> None:

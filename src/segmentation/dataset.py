@@ -66,10 +66,13 @@ class SegmentationDataset(BaseDataset):
     ):
         self.mask_extensions = mask_extensions
         self.class_config = class_config
-        self.rgb_to_idx = {
+        self.rgb_to_class_idx = {
             tuple(c.pixel_value): idx for idx, c in enumerate(class_config)
         }
-        self.idx_to_name = {idx: c.name for idx, c in enumerate(class_config)}
+        self.class_idx_to_rgb = {
+            idx: tuple(c.pixel_value) for idx, c in enumerate(class_config)
+        }
+        self.class_idx_to_name = {idx: c.name for idx, c in enumerate(class_config)}
         self.lookup_table = self._create_lookup_table()
 
         super().__init__(
@@ -82,14 +85,14 @@ class SegmentationDataset(BaseDataset):
     def _create_lookup_table(self) -> np.ndarray:
         """Create a lookup table for efficient mask conversion."""
         max_id = 0
-        for color in self.rgb_to_idx:
+        for color in self.rgb_to_class_idx:
             color_id = color[0] * 256**2 + color[1] * 256 + color[2]
             if color_id > max_id:
                 max_id = color_id
 
         lut = np.full(max_id + 1, 255, dtype=np.int64)
 
-        for color, class_id in self.rgb_to_idx.items():
+        for color, class_id in self.rgb_to_class_idx.items():
             color_id = color[0] * 256**2 + color[1] * 256 + color[2]
             lut[color_id] = class_id
 
@@ -184,7 +187,7 @@ class SegmentationDataset(BaseDataset):
         Returns:
             List of class names
         """
-        return [self.idx_to_name[i] for i in range(len(self.class_config))]
+        return [self.class_idx_to_name[i] for i in range(len(self.class_config))]
 
     def get_data_distribution(self) -> list[DataDistribution]:
         """
