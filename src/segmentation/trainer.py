@@ -1,6 +1,7 @@
 """Trainer for segmentation models."""
 
 import logging
+import typing as t
 from pathlib import Path
 
 import torch
@@ -14,6 +15,7 @@ from src.common.logging import log_gpu_memory
 from src.common.utils import DEVICE
 from src.core.trainer import BaseTrainer
 from src.segmentation.config import SegmentationConfig
+from src.segmentation.dataset import SegmentationDataset
 from src.segmentation.metrics import SegmentationMetrics
 from src.segmentation.model_manager import SegmentationModelManager
 from src.segmentation.visualizer import SegmentationVisualizer
@@ -157,7 +159,7 @@ class SegmentationTrainer(
                 loss = self.criterion(output, target)
 
             # Calculate mIoU
-            pred = output.argmax(dim=1, keepdim=True)
+            pred = output.argmax(dim=1)
             miou = self._calculate_iou(pred, target)
             total_iou += miou
 
@@ -275,7 +277,7 @@ class SegmentationTrainer(
 
                 total_loss += loss.item()
 
-                pred = output.argmax(dim=1, keepdim=True)
+                pred = output.argmax(dim=1)
                 iou = self._calculate_iou(pred, target)
                 total_iou += iou
 
@@ -298,7 +300,7 @@ class SegmentationTrainer(
                     output = self.model(data)
                     loss = self.criterion(output, target)
 
-                pred = output.argmax(dim=1, keepdim=True)
+                pred = output.argmax(dim=1)
                 iou = self._calculate_iou(pred, target)
                 total_iou += iou
 
@@ -312,38 +314,34 @@ class SegmentationTrainer(
         logger.info(f"  mIoU: {avg_iou:.4f}")
 
     def _create_checkpoint_task_specific(self) -> dict:
+        dataset = t.cast(SegmentationDataset, self.train_loader.dataset)
         return {
-            "class_names": self.train_loader.dataset.get_class_names(),
-            "class_idx_to_rgb": self.train_loader.dataset.class_idx_to_rgb,
-            "class_idx_to_name": self.train_loader.dataset.class_idx_to_name,
+            "class_names": dataset.get_class_names(),
+            "class_idx_to_rgb": dataset.class_idx_to_rgb,
+            "class_idx_to_name": dataset.class_idx_to_name,
         }
 
     def _load_checkpoint_task_specific(self, checkpoint: dict) -> None:
+        dataset = t.cast(SegmentationDataset, self.train_loader.dataset)
         if "class_names" in checkpoint:
             checkpoint_class_names = checkpoint["class_names"]
-            if checkpoint_class_names != self.train_loader.dataset.get_class_names():
+            if checkpoint_class_names != dataset.get_class_names():
                 raise ValueError(
-                    f"Class names in checkpoint ({checkpoint_class_names}) do not match the class names in the trainer ({self.train_loader.dataset.get_class_names()})"
+                    f"Class names in checkpoint ({checkpoint_class_names}) do not match the class names in the trainer ({dataset.get_class_names()})"
                 )
         else:
             raise ValueError("Class names not found in checkpoint")
         if "class_idx_to_rgb" in checkpoint:
             checkpoint_class_idx_to_rgb = checkpoint["class_idx_to_rgb"]
-            if (
-                checkpoint_class_idx_to_rgb
-                != self.train_loader.dataset.class_idx_to_rgb
-            ):
+            if checkpoint_class_idx_to_rgb != dataset.class_idx_to_rgb:
                 raise ValueError(
-                    f"Class idx to rgb in checkpoint ({checkpoint_class_idx_to_rgb}) do not match the class idx to rgb in the trainer ({self.train_loader.dataset.class_idx_to_rgb})"
+                    f"Class idx to rgb in checkpoint ({checkpoint_class_idx_to_rgb}) do not match the class idx to rgb in the trainer ({dataset.class_idx_to_rgb})"
                 )
         if "class_idx_to_name" in checkpoint:
             checkpoint_class_idx_to_name = checkpoint["class_idx_to_name"]
-            if (
-                checkpoint_class_idx_to_name
-                != self.train_loader.dataset.class_idx_to_name
-            ):
+            if checkpoint_class_idx_to_name != dataset.class_idx_to_name:
                 raise ValueError(
-                    f"Class idx to name in checkpoint ({checkpoint_class_idx_to_name}) do not match the class idx to name in the trainer ({self.train_loader.dataset.class_idx_to_name})"
+                    f"Class idx to name in checkpoint ({checkpoint_class_idx_to_name}) do not match the class idx to name in the trainer ({dataset.class_idx_to_name})"
                 )
 
     # ================================ Helper Methods ================================
@@ -358,12 +356,12 @@ class SegmentationTrainer(
         Returns:
             The mean IoU score for the batch.
         """
-        pred = pred.view(-1)
-        target = target.view(-1)
+        pred_flat = pred.view(-1)
+        target_flat = target.view(-1)
 
         # Calculate the confusion matrix
         num_classes = self.cfg.model.classes
-        confusion_vector = target * num_classes + pred
+        confusion_vector = target_flat * num_classes + pred_flat
         counts = torch.bincount(confusion_vector, minlength=num_classes**2)
         confusion_matrix = counts.reshape(num_classes, num_classes)
 
