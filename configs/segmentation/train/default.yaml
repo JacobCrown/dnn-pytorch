@@ -1,6 +1,6 @@
 # Training hyperparameters
 
-epochs: 100
+epochs: 50
 batch_size: 12
 num_workers: 0
 pin_memory: false
@@ -31,7 +31,7 @@ use_amp: false
 gradient_clip: null
 
 # Resume from checkpoint
-resume: null
+resume_from_checkpoint: null
 
 # Early stopping
 early_stopping_patience: null

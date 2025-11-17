@@ -1,0 +1,14 @@
+architecture: "Unet"
+encoder_name: "resnet18"
+encoder_weights: "imagenet"
+height: 96
+width: 96
+in_channels: 3
+classes: 32
+params:
+  encoder_depth: 2
+  decoder_channels: [16, 8]
+  decoder_attention_type: null
+  aux_params: null
+  dropout: 0.4
+  activation: null
