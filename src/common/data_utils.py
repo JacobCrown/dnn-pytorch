@@ -6,9 +6,9 @@ from src.common.config import BaseTrainingConfig
 def create_data_loaders(
     config: BaseTrainingConfig,
     train_dataset: Dataset,
-    val_dataset: Dataset | None = None,
+    val_dataset: Dataset,
     test_dataset: Dataset | None = None,
-) -> tuple[DataLoader, DataLoader | None, DataLoader | None]:
+) -> tuple[DataLoader, DataLoader, DataLoader | None]:
     """Create data loaders for training, validation, and test sets.
     Args:
         config: Training configuration.
@@ -26,15 +26,13 @@ def create_data_loaders(
         pin_memory=config.pin_memory,
     )
 
-    val_loader = None
-    if val_dataset is not None:
-        val_loader = DataLoader(
-            val_dataset,
-            batch_size=config.batch_size,
-            shuffle=False,
-            num_workers=config.num_workers,
-            pin_memory=config.pin_memory,
-        )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=config.batch_size,
+        shuffle=False,
+        num_workers=config.num_workers,
+        pin_memory=config.pin_memory,
+    )
 
     test_loader = None
     if test_dataset is not None:
