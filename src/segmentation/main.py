@@ -196,4 +196,13 @@ def main(cfg: dict) -> None:
 
 
 if __name__ == "__main__":
+    import cProfile
+    import pstats
+
+    pr = cProfile.Profile()
+    pr.enable()
     main()
+    pr.disable()
+    stats = pstats.Stats(pr).sort_stats("cumtime")  # Sort po kumulatywnym czasie
+    stats.print_stats(20)  # Top 20 funkcji
+    stats.dump_stats("profile.prof")

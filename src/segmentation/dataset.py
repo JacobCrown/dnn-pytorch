@@ -7,6 +7,7 @@ from pathlib import Path
 import albumentations as A
 import numpy as np
 import torch
+from tqdm import tqdm
 
 from src.core.dataset import BaseDataset
 from src.segmentation.config import ClassConfig
@@ -67,12 +68,16 @@ class SegmentationDataset(BaseDataset):
         self.mask_extensions = mask_extensions
         self.class_config = class_config
         self.rgb_to_class_idx = {
-            tuple(c.pixel_value): idx for idx, c in enumerate(class_config)
+            tuple[int, ...](c.pixel_value): idx
+            for idx, c in enumerate[ClassConfig](class_config)
         }
         self.class_idx_to_rgb = {
-            idx: tuple(c.pixel_value) for idx, c in enumerate(class_config)
+            idx: tuple[int, ...](c.pixel_value)
+            for idx, c in enumerate[ClassConfig](class_config)
         }
-        self.class_idx_to_name = {idx: c.name for idx, c in enumerate(class_config)}
+        self.class_idx_to_name = {
+            idx: c.name for idx, c in enumerate[ClassConfig](class_config)
+        }
         self.lookup_table = self._create_lookup_table()
 
         super().__init__(
@@ -84,18 +89,18 @@ class SegmentationDataset(BaseDataset):
 
     def _create_lookup_table(self) -> np.ndarray:
         """Create a lookup table for efficient mask conversion."""
-        max_id = 0
-        for color in self.rgb_to_class_idx:
-            color_id = color[0] * 256**2 + color[1] * 256 + color[2]
-            if color_id > max_id:
-                max_id = color_id
+        # Full 256^3 LUT (16,777,216 entries) keeps conversion O(1) and safe for any RGB.
+        # Use uint8 to keep memory reasonable (~16MB). This implies classes <= 255.
+        max_class = max(self.rgb_to_class_idx.values(), default=0)
+        if max_class >= 255:
+            raise ValueError(
+                "SegmentationDataset LUT uses uint8; number of classes must be <= 255."
+            )
 
-        lut = np.full(max_id + 1, 255, dtype=np.int64)
-
+        lut = np.full(256**3, 255, dtype=np.uint8)
         for color, class_id in self.rgb_to_class_idx.items():
             color_id = color[0] * 256**2 + color[1] * 256 + color[2]
-            lut[color_id] = class_id
-
+            lut[color_id] = np.uint8(class_id)
         return lut
 
     def _convert_pixel_mask_to_class_mask(self, mask: np.ndarray) -> np.ndarray:
@@ -109,9 +114,26 @@ class SegmentationDataset(BaseDataset):
         """
         mask_int32 = mask.astype(np.int32)
         integer_mask = mask_int32.dot(np.array([256**2, 256, 1], dtype=np.int32))
-        class_mask = self.lookup_table[integer_mask]
+        class_mask = self.lookup_table[integer_mask].astype(np.int64)
+        return class_mask
 
-        return class_mask.astype(np.int64)
+    def _prepare_mask_files(self, image_files: list[Path]) -> None:
+        """Find corresponding mask files for each image, preprocess them and save to a better .npy format"""
+        for image_file in tqdm(
+            image_files,
+            desc=f"Preparing mask files for {self.data_root}",
+            total=len(image_files),
+        ):
+            mask_file = self._find_mask_file(self.data_root / "masks", image_file)
+            if mask_file is not None:
+                mask_file_npy = mask_file.with_suffix(".npy")
+                if mask_file_npy.exists():
+                    continue
+                mask_rgb = self._load_image(mask_file)
+                mask = self._convert_pixel_mask_to_class_mask(mask_rgb)
+                np.save(mask_file_npy, mask.astype(np.int64), allow_pickle=False)
+            else:
+                logger.warning(f"No mask found for image: {image_file}")
 
     def _build_samples(self) -> None:
         """Build the list of samples for segmentation."""
@@ -127,10 +149,12 @@ class SegmentationDataset(BaseDataset):
         for ext in self.extensions:
             image_files.extend(images_dir.glob(f"*{ext}"))
 
+        self._prepare_mask_files(image_files)
+
         for image_file in image_files:
             mask_file = self._find_mask_file(masks_dir, image_file)
             if mask_file is not None:
-                self.samples.append((str(image_file), str(mask_file)))
+                self.samples.append((image_file, mask_file))
                 if self.max_samples and len(self.samples) >= self.max_samples:
                     break
             else:
@@ -164,10 +188,7 @@ class SegmentationDataset(BaseDataset):
         image_path, mask_path = self.samples[idx]
 
         image = self._load_image(image_path)
-        mask_rgb = self._load_image(mask_path)
-
-        # Convert RGB mask to class indices
-        mask = self._convert_pixel_mask_to_class_mask(mask_rgb)
+        mask = np.load(mask_path.with_suffix(".npy"))
 
         # Apply paired transforms
         if self.transforms is not None:
@@ -203,8 +224,7 @@ class SegmentationDataset(BaseDataset):
         total_pixels = 0
 
         for _, mask_path in self.samples:
-            mask_rgb = self._load_image(mask_path)
-            mask = self._convert_pixel_mask_to_class_mask(mask_rgb)
+            mask = np.load(mask_path.with_suffix(".npy"))
             # mask shape: (H, W)
             flat_mask = mask.flatten()
             total_pixels += flat_mask.size

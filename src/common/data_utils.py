@@ -18,20 +18,30 @@ def create_data_loaders(
     Returns:
         A tuple containing the training, validation, and test data loaders.
     """
+    common_kwargs: dict = {
+        "num_workers": config.num_workers,
+        "pin_memory": config.pin_memory,
+    }
+    if config.num_workers > 0:
+        # Only valid when using worker processes
+        common_kwargs["persistent_workers"] = config.persistent_workers
+        if config.prefetch_factor is not None:
+            common_kwargs["prefetch_factor"] = config.prefetch_factor
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=config.batch_size,
         shuffle=config.shuffle,
-        num_workers=config.num_workers,
-        pin_memory=config.pin_memory,
+        drop_last=config.drop_last,
+        **common_kwargs,
     )
 
     val_loader = DataLoader(
         val_dataset,
         batch_size=config.batch_size,
         shuffle=False,
-        num_workers=config.num_workers,
-        pin_memory=config.pin_memory,
+        drop_last=False,
+        **common_kwargs,
     )
 
     test_loader = None
@@ -40,8 +50,8 @@ def create_data_loaders(
             test_dataset,
             batch_size=config.batch_size,
             shuffle=False,
-            num_workers=config.num_workers,
-            pin_memory=config.pin_memory,
+            drop_last=False,
+            **common_kwargs,
         )
 
     return train_loader, val_loader, test_loader

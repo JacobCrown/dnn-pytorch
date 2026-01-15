@@ -160,6 +160,11 @@ class BaseTrainingConfig(BaseConfig):
     pin_memory: bool = True
     shuffle: bool = True
 
+    # DataLoader performance knobs
+    persistent_workers: bool = True
+    prefetch_factor: int | None = 2
+    drop_last: bool = False
+
     # Optimizer
     optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
 

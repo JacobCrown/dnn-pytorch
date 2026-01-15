@@ -23,6 +23,10 @@ dependencies = [
   "tqdm>=4.66.4",
   "segmentation-models-pytorch>=0.5.0",
   "torchinfo>=1.8.0",
+  "bs4>=0.0.2",
+  "pywikibot>=10.7.0",
+  "cairosvg>=2.8.2",
+  "torchmetrics>=1.8.2",
 ]
 
 [tool.uv.sources]
@@ -44,9 +48,11 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+    "ipykernel>=7.1.0",
     "mypy>=1.18.2",
     "pre-commit>=4.3.0",
     "ruff>=0.14.2",
+    "snakeviz>=2.2.2",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -79,6 +85,7 @@ ignore = [
   "E501",  # line length handled by formatter
   "N812",  # lowercase module imported as non-lowercase alias (allow A for albumentations)
   "N818",  # Exception name should end with Error
+  "B905",  # Using deprecated alias for strict=False
 ]
 
 [tool.ruff.format]

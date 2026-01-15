@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.amp import autocast  # type: ignore[reportMissingImports]
 from torch.utils.data import DataLoader
+from torchmetrics.functional.classification import multiclass_jaccard_index
 from tqdm import tqdm
 
 from src.common.logging import log_gpu_memory
@@ -347,7 +348,7 @@ class SegmentationTrainer(
     # ================================ Helper Methods ================================
 
     def _calculate_iou(self, pred: torch.Tensor, target: torch.Tensor) -> float:
-        """Calculate the Intersection over Union for a batch using a vectorized approach.
+        """Calculate mean IoU (Jaccard) for a batch using TorchMetrics.
 
         Args:
             pred: Predicted masks of shape (B, H, W).
@@ -356,30 +357,11 @@ class SegmentationTrainer(
         Returns:
             The mean IoU score for the batch.
         """
-        pred_flat = pred.view(-1)
-        target_flat = target.view(-1)
-
-        # Calculate the confusion matrix
-        num_classes = self.cfg.model.classes
-        confusion_vector = target_flat * num_classes + pred_flat
-        counts = torch.bincount(confusion_vector, minlength=num_classes**2)
-        confusion_matrix = counts.reshape(num_classes, num_classes)
-
-        # Calculate intersection and union
-        intersection = torch.diag(confusion_matrix)
-        union = (
-            torch.sum(confusion_matrix, dim=1)
-            + torch.sum(confusion_matrix, dim=0)
-            - intersection
+        score = multiclass_jaccard_index(
+            preds=pred,
+            target=target,
+            num_classes=self.cfg.model.classes,
+            average="macro",
+            ignore_index=255,
         )
-
-        # Calculate IoU per class
-        # division by zero will result in NaN, which is desired
-        iou_per_class = intersection.float() / union.float()
-
-        # mIoU is the mean of IoUs over classes that have a non-zero union.
-        # This is equivalent to nanmean.
-        valid_ious = iou_per_class[~torch.isnan(iou_per_class)]
-        miou = valid_ious.mean().item() if valid_ious.numel() > 0 else 0.0
-
-        return miou
+        return float(score.item())
