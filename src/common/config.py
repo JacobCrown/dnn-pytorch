@@ -132,6 +132,7 @@ class LossFunctionConfig(BaseConfig):
 
     name: str = "cross_entropy"
     params: dict[str, Any] = field(default_factory=dict)
+    weight: float = 1.0
 
 
 @dataclass
@@ -171,8 +172,10 @@ class BaseTrainingConfig(BaseConfig):
     # Scheduler
     scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
 
-    # Loss function
-    loss_function: LossFunctionConfig = field(default_factory=LossFunctionConfig)
+    # Loss function(s) - can be a single config or list of configs
+    loss_function: list[LossFunctionConfig] = field(
+        default_factory=lambda: [LossFunctionConfig()]
+    )
 
     # Early stopping
     early_stopping_patience: int | None = 10
