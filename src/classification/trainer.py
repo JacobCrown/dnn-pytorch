@@ -148,9 +148,9 @@ class ClassificationTrainer(
             Tuple of (average_loss, accuracy)
         """
         self.model.train()
-        total_loss = 0.0
-        correct = 0
-        total = 0
+        total_loss = torch.tensor(0.0, device=DEVICE)
+        correct = torch.tensor(0.0, device=DEVICE, dtype=torch.int64)
+        total = torch.tensor(0.0, device=DEVICE, dtype=torch.int64)
 
         pbar = tqdm(self.train_loader, desc=f"Epoch {self.current_epoch + 1}")
 
@@ -163,7 +163,7 @@ class ClassificationTrainer(
                 loss = self.criterion(output, target)
 
             pred = output.argmax(dim=1, keepdim=True)
-            correct += pred.eq(target.view_as(pred)).sum().item()
+            correct += pred.eq(target.view_as(pred)).sum()
             total += target.size(0)
 
             if self.use_amp:
@@ -183,15 +183,15 @@ class ClassificationTrainer(
                     )
                 self.optimizer.step()
 
-            total_loss += loss.item()
+            total_loss += loss
 
             # Update progress bar
             pbar.set_postfix(
                 {"Loss": f"{loss.item():.4f}", "Acc": f"{100.0 * correct / total:.2f}%"}
             )
 
-        avg_loss = total_loss / len(self.train_loader)
-        accuracy = 100.0 * correct / total
+        avg_loss = total_loss.item() / len(self.train_loader)
+        accuracy = 100.0 * (correct / total).item()
 
         return avg_loss, accuracy
 
@@ -263,9 +263,9 @@ class ClassificationTrainer(
             Tuple of (average_loss, accuracy)
         """
         self.model.eval()
-        total_loss = 0.0
-        correct = 0
-        total = 0
+        total_loss = torch.tensor(0.0, device=DEVICE)
+        correct = torch.tensor(0.0, device=DEVICE, dtype=torch.int64)
+        total = torch.tensor(0.0, device=DEVICE, dtype=torch.int64)
 
         with torch.inference_mode():
             for data, target in tqdm(self.val_loader, desc="Validation"):
@@ -275,23 +275,23 @@ class ClassificationTrainer(
                     output = self.model(data)
                     loss = self.criterion(output, target)
 
-                total_loss += loss.item()
+                total_loss += loss
 
                 pred = output.argmax(dim=1, keepdim=True)
-                correct += pred.eq(target.view_as(pred)).sum().item()
+                correct += pred.eq(target.view_as(pred)).sum()
                 total += target.size(0)
 
-        avg_loss = total_loss / len(self.val_loader)
-        accuracy = 100.0 * correct / total
+        avg_loss = total_loss.item() / len(self.val_loader)
+        accuracy = 100.0 * (correct / total).item()
 
         return avg_loss, accuracy
 
     def _evaluate(self, test_loader: DataLoader) -> None:
         """Evaluate the model on test data."""
         self.model.eval()
-        total_loss = 0.0
-        correct = 0
-        total = 0
+        total_loss = torch.tensor(0.0, device=DEVICE)
+        correct = torch.tensor(0.0, device=DEVICE, dtype=torch.int64)
+        total = torch.tensor(0.0, device=DEVICE, dtype=torch.int64)
 
         with torch.inference_mode():
             for data, target in tqdm(test_loader, desc="Evaluating"):
@@ -302,18 +302,18 @@ class ClassificationTrainer(
                     loss = self.criterion(output, target)
 
                 pred = output.argmax(dim=1, keepdim=True)
-                correct += pred.eq(target.view_as(pred)).sum().item()
+                correct += pred.eq(target.view_as(pred)).sum()
                 total += target.size(0)
 
-                total_loss += loss.item()
+                total_loss += loss
 
-        accuracy = 100.0 * correct / total
-        avg_loss = total_loss / len(test_loader)
+        accuracy = 100.0 * (correct / total).item()
+        avg_loss = total_loss.item() / len(test_loader)
 
         logger.info("Test Results:")
         logger.info(f"  Loss: {avg_loss:.4f}")
         logger.info(f"  Accuracy: {accuracy:.2f}%")
-        logger.info(f"  Correct: {correct}/{total}")
+        logger.info(f"  Correct: {correct.item()}/{total.item()}")
 
     def _create_checkpoint_task_specific(self) -> dict:
         return {
