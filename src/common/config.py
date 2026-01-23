@@ -194,3 +194,7 @@ class BaseTrainingConfig(BaseConfig):
     checkpoints_dir: str = "checkpoints"
     logs_dir: str = "logs"
     visualize_dir: str = "visualizations"
+
+    # visualization flags
+    visualize_pre_train: bool = False
+    visualize_post_train: bool = False

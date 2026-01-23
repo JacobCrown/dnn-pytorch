@@ -97,6 +97,10 @@ class BaseTrainer[
             save_dir=self.visualize_dir
         )
 
+        # Visualization flags
+        self.visualize_pre_train: bool = self.train_cfg.visualize_pre_train
+        self.visualize_post_train: bool = self.train_cfg.visualize_post_train
+
         # Setup metrics
         self.metrics: MetricsType = self.metrics_cls()
 
@@ -165,9 +169,11 @@ class BaseTrainer[
 
     def train(self):
         """Train the model."""
-        self._visualize_pre_train()
+        if self.visualize_pre_train:
+            self._visualize_pre_train()
         self._train()
-        self._visualize_post_train()
+        if self.visualize_post_train:
+            self._visualize_post_train()
 
     def _save_checkpoint(self, filename: str) -> None:
         """Save model checkpoint.
