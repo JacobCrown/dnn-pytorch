@@ -127,11 +127,13 @@ class ClassificationVisualizer(BaseVisualizer):
         # Collect file paths
         for file_path, label in dataset.samples:
             class_name = idx_to_class[label]
+            if len(file_paths_by_class[class_name]) >= num_samples_per_class:
+                continue
             file_paths_by_class[class_name].append(Path(file_path))
 
         # Load and process images
         for class_name in class_names:
-            file_paths = file_paths_by_class[class_name][:num_samples_per_class]
+            file_paths = file_paths_by_class[class_name]
             for file_path in file_paths:
                 image = self._load_and_process_image(file_path, transforms)
                 if image is not None:
@@ -146,14 +148,12 @@ class ClassificationVisualizer(BaseVisualizer):
         self,
         samples_by_class: PlotData,
         title: str,
-        show_title_labels: bool = True,
     ) -> tuple[plt.Figure, np.ndarray]:
         """Create an image grid figure.
 
         Args:
             samples_by_class: Dictionary of class names to images
             title: Figure title
-            show_title_labels: Whether to show class labels as titles
 
         Returns:
             Figure and axes array
@@ -187,7 +187,7 @@ class ClassificationVisualizer(BaseVisualizer):
             save_path: Where to save the plot
             show_title_labels: Whether to show class names as titles
         """
-        fig, axes = self._create_image_grid(samples_by_class, title, show_title_labels)
+        _, axes = self._create_image_grid(samples_by_class, title)
         class_names = list(samples_by_class.keys())
         max_images = axes.shape[0]
 
@@ -208,7 +208,7 @@ class ClassificationVisualizer(BaseVisualizer):
                 ax.axis("off")
 
         plt.tight_layout()
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.savefig(save_path)
         plt.close()
         logger.debug(f"Image grid saved to {save_path}")
 
@@ -286,7 +286,7 @@ class ClassificationVisualizer(BaseVisualizer):
         fig_width = max(12, min(40, num_classes * 0.4))
         figsize = (fig_width, 8)
 
-        fig, ax = plt.subplots(figsize=figsize)
+        _, ax = plt.subplots(figsize=figsize)
         colors = sns.color_palette("husl", num_classes)
 
         bars = ax.bar(range(num_classes), counts, color=colors)
@@ -295,9 +295,8 @@ class ClassificationVisualizer(BaseVisualizer):
         ax.set_title("Class Distribution", fontsize=14, fontweight="bold")
 
         # Dynamic label sizing
-        tick_fontsize = self._get_tick_fontsize(num_classes)
         ax.set_xticks(range(num_classes))
-        ax.set_xticklabels(class_names, rotation=90, ha="right", fontsize=tick_fontsize)
+        ax.set_xticklabels(class_names, rotation=90, ha="right", fontsize=12)
         ax.grid(axis="y", alpha=0.3)
 
         # Add value labels only for reasonable number of classes
@@ -310,32 +309,14 @@ class ClassificationVisualizer(BaseVisualizer):
                     f"{int(height)}",
                     ha="center",
                     va="bottom",
-                    fontsize=max(6, tick_fontsize - 2),
+                    fontsize=10,
                 )
 
         plt.tight_layout()
         save_path = self.save_dir / "data_distribution.png"
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.savefig(save_path)
         plt.close()
         logger.info(f"Data distribution plot saved to {save_path}")
-
-    def _get_tick_fontsize(self, num_classes: int) -> int:
-        """Get appropriate font size based on number of classes.
-
-        Args:
-            num_classes: Number of classes
-
-        Returns:
-            Appropriate font size
-        """
-        if num_classes > 70:
-            return 4
-        elif num_classes > 50:
-            return 5
-        elif num_classes > 30:
-            return 6
-        else:
-            return 8
 
     def _get_predictions(
         self,
@@ -401,7 +382,6 @@ class ClassificationVisualizer(BaseVisualizer):
 
     def _create_prediction_grid(
         self,
-        samples_by_class: PredictionData,
         class_names: list[str],
         num_samples_per_class: int,
     ) -> tuple[plt.Figure, np.ndarray]:
@@ -492,9 +472,7 @@ class ClassificationVisualizer(BaseVisualizer):
         )
 
         # Create visualization
-        fig, axes = self._create_prediction_grid(
-            samples_by_class, class_names, num_samples_per_class
-        )
+        _, axes = self._create_prediction_grid(class_names, num_samples_per_class)
 
         # Plot each sample
         for col, class_idx in enumerate(range(num_classes)):
@@ -698,9 +676,8 @@ class ClassificationVisualizer(BaseVisualizer):
         ax.grid(axis="y", alpha=0.3)
 
         # Dynamic tick formatting
-        tick_fontsize = self._get_tick_fontsize(num_classes)
         ax.set_xticks(range(num_classes))
-        ax.set_xticklabels(class_names, rotation=90, ha="right", fontsize=tick_fontsize)
+        ax.set_xticklabels(class_names, rotation=90, ha="right", fontsize=12)
 
         # Add value labels for reasonable number of classes
         if num_classes <= 30:
@@ -712,12 +689,12 @@ class ClassificationVisualizer(BaseVisualizer):
                     f"{height:.1f}",
                     ha="center",
                     va="bottom",
-                    fontsize=max(6, tick_fontsize - 2),
+                    fontsize=10,
                 )
 
         plt.tight_layout()
         save_path = self.save_dir / "per_class_accuracy.png"
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.savefig(save_path)
         plt.close()
         logger.info(f"Per-class accuracy plot saved to {save_path}")
 
@@ -730,7 +707,7 @@ class ClassificationVisualizer(BaseVisualizer):
             metrics: Metrics object containing loss history
             figsize: Figure size
         """
-        fig, ax = plt.subplots(figsize=figsize)
+        _, ax = plt.subplots(figsize=figsize)
 
         for key, values in metrics.losses.items():
             if values:
@@ -744,7 +721,7 @@ class ClassificationVisualizer(BaseVisualizer):
 
         plt.tight_layout()
         save_path = self.save_dir / "loss_curves.png"
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.savefig(save_path)
         plt.close()
         logger.debug(f"Loss curves saved to {save_path}")
 
@@ -757,7 +734,7 @@ class ClassificationVisualizer(BaseVisualizer):
             metrics: Metrics object containing accuracy history
             figsize: Figure size
         """
-        fig, ax = plt.subplots(figsize=figsize)
+        _, ax = plt.subplots(figsize=figsize)
 
         accuracies = getattr(metrics, "accuracies", {})
         for key, values in accuracies.items():
@@ -772,7 +749,7 @@ class ClassificationVisualizer(BaseVisualizer):
 
         plt.tight_layout()
         save_path = self.save_dir / "accuracy_curves.png"
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.savefig(save_path)
         plt.close()
         logger.debug(f"Accuracy curves saved to {save_path}")
 
@@ -804,7 +781,7 @@ class ClassificationVisualizer(BaseVisualizer):
         cm = confusion_matrix(all_targets, all_predictions)
 
         # Create plot
-        fig, ax = plt.subplots(figsize=figsize)
+        _, ax = plt.subplots(figsize=figsize)
 
         # For many classes, don't show annotations
         show_annot = num_classes <= 30
@@ -822,11 +799,8 @@ class ClassificationVisualizer(BaseVisualizer):
         )
 
         # Adjust tick labels
-        tick_fontsize = self._get_tick_fontsize(num_classes)
-        ax.set_xticklabels(
-            ax.get_xticklabels(), rotation=90, ha="right", fontsize=tick_fontsize
-        )
-        ax.set_yticklabels(ax.get_yticklabels(), rotation=0, fontsize=tick_fontsize)
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=90, ha="right", fontsize=12)
+        ax.set_yticklabels(ax.get_yticklabels(), rotation=0, fontsize=12)
 
         ax.set_xlabel("Predicted", fontsize=12)
         ax.set_ylabel("True", fontsize=12)
@@ -836,7 +810,7 @@ class ClassificationVisualizer(BaseVisualizer):
 
         save_path_png = self.save_dir / "confusion_matrix.png"
 
-        plt.savefig(save_path_png, dpi=300, bbox_inches="tight")
+        plt.savefig(save_path_png)
         plt.close()
 
         logger.info(f"Confusion matrix saved to {save_path_png}")
