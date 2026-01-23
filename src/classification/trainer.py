@@ -185,11 +185,6 @@ class ClassificationTrainer(
 
             total_loss += loss
 
-            # Update progress bar
-            pbar.set_postfix(
-                {"Loss": f"{loss.item():.4f}", "Acc": f"{100.0 * correct / total:.2f}%"}
-            )
-
         avg_loss = total_loss.item() / len(self.train_loader)
         accuracy = 100.0 * (correct / total).item()
 
