@@ -1,3 +1,4 @@
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -107,13 +108,16 @@ class ClassificationDataset(BaseDataset):
 
     def get_data_distribution(self) -> list[DataDistribution]:
         """Get the distribution of the data."""
-        data_distribution = [
-            DataDistribution(class_name=class_name, count=0, percentage=0)
-            for class_name in self.class_names
-        ]
-        for _, label in self.samples:
-            data_distribution[label].count += 1
+
+        label_counts = Counter(label for _, label in self.samples)
         total_samples = len(self.samples)
-        for data_dist in data_distribution:
-            data_dist.percentage = (data_dist.count / total_samples) * 100
-        return data_distribution
+        return [
+            DataDistribution(
+                class_name=class_name,
+                count=label_counts.get(idx, 0),
+                percentage=(label_counts.get(idx, 0) / total_samples * 100)
+                if total_samples > 0
+                else 0,
+            )
+            for idx, class_name in enumerate(self.class_names)
+        ]
