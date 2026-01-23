@@ -16,7 +16,6 @@ dependencies = [
   "pytest>=8.4.1",
   "scikit-learn>=1.7.1",
   "seaborn>=0.13.2",
-  "tensorboard",
   "timm>=1.0.19",
   "torch>=2.7.0",
   "torchvision>=0.22.0",

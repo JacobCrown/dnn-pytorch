@@ -7,7 +7,6 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.amp import GradScaler  # type: ignore[reportMissingImports]
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
 
 from src.common.config import BaseTrainingConfig
 from src.common.utils import DEVICE
@@ -88,9 +87,6 @@ class BaseTrainer[
         self.use_amp: bool = self.train_cfg.use_amp
         self.grad_clip: float | None = self.train_cfg.gradient_clip
         self.scaler: GradScaler = GradScaler(device=DEVICE, enabled=self.use_amp)
-
-        # Setup logging
-        self.writer: SummaryWriter = SummaryWriter(self.log_dir)
 
         # Training state
         self.current_epoch: int = 0
