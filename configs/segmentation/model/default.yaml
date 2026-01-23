@@ -1,14 +1,23 @@
-architecture: "Unet"
+architecture: "DeepLabV3Plus"
 encoder_name: "resnet18"
 encoder_weights: "imagenet"
-height: 96
-width: 96
+height: 368
+width: 480
 in_channels: 3
-classes: 32
+classes: 20
 params:
-  encoder_depth: 2
-  decoder_channels: [16, 8]
-  decoder_attention_type: null
-  aux_params: null
-  dropout: 0.4
+  dropout: 0.2
   activation: null
+preprocessing:
+  - name: Resize
+    params:
+      height: 368
+      width: 480
+      interpoltaion: 2
+  - name: Normalize
+    params:
+      mean: [0.485, 0.456, 0.406]
+      std: [0.229, 0.224, 0.225]
+  - name: ToTensorV2
+    params:
+      transpose_mask: false

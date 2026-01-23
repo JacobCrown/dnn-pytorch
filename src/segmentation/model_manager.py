@@ -7,8 +7,8 @@ import albumentations as A
 import segmentation_models_pytorch as smp
 import torch
 import torch.nn as nn
-from albumentations.pytorch import ToTensorV2
 
+from src.common.augmentations import AugmentationConfig, get_augmentations
 from src.common.utils import DEVICE
 from src.core.model_manager import BaseModelManager
 from src.segmentation.config import SegmentationModelConfig
@@ -33,23 +33,14 @@ class SegmentationModelManager(BaseModelManager[SegmentationModelConfig]):
             **self.model_cfg.params,
         )
 
-    def create_preprocessing(self) -> A.Compose:
-        data_config = smp.encoders.get_preprocessing_params(
-            self.model_cfg.encoder_name, pretrained=self.model_cfg.encoder_weights
-        )
-        mean = data_config.get("mean")
-        std = data_config.get("std")
-        if isinstance(mean, int):
-            mean = (mean,) * self.model_cfg.in_channels
-        if isinstance(std, int):
-            std = (std,) * self.model_cfg.in_channels
-        height = self.model_cfg.height
-        width = self.model_cfg.width
-        return A.Compose(
+    def get_preprocessing(self) -> A.Compose:
+        return get_augmentations(self.model_cfg.preprocessing)
+
+    def load_preprocessing(self, preprocessing: dict) -> None:
+        self.preprocessing = get_augmentations(
             [
-                A.Resize(height, width),
-                A.Normalize(mean=mean, std=std),
-                ToTensorV2(transpose_mask=True),
+                AugmentationConfig.from_dict(augmentation)
+                for augmentation in preprocessing
             ]
         )
 
@@ -83,6 +74,13 @@ class SegmentationModelManager(BaseModelManager[SegmentationModelConfig]):
         if config["height"] != self.model_cfg.height:
             raise ValueError(
                 f"Trained model config height ({config['height']}) does not match the current model config height ({self.model_cfg.height})"
+            )
+        current_preprocessing = [
+            augmentation.to_dict() for augmentation in self.model_cfg.preprocessing
+        ]
+        if config["preprocessing"] != current_preprocessing:
+            raise ValueError(
+                f"Trained model config preprocessing ({config['preprocessing']}) does not match the current model config preprocessing ({current_preprocessing})"
             )
 
     @classmethod

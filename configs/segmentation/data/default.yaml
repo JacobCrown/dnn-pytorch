@@ -5,7 +5,7 @@ test_dir: "test"
 extensions: [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
 mask_extensions: [".png"]
 # For debugging purposes, optional
-max_samples: 20
+max_samples: null
 class_config:
   - name: Animal
     pixel_value: [64, 128, 64]
@@ -71,3 +71,41 @@ class_config:
     pixel_value: [0, 0, 0]
   - name: Wall
     pixel_value: [64, 192, 0]
+
+class_mapping:
+  - name: Road2
+    pixel_value: [128, 64, 128]   # Road
+    map_classes:
+      - Road
+      - RoadShoulder
+
+  - name: Person
+    pixel_value: [64, 64, 0]      # Pedestrian
+    map_classes:
+      - Pedestrian
+      - Child
+
+  - name: Vehicle
+    pixel_value: [64, 0, 128]     # Car
+    map_classes:
+      - Car
+      - SUVPickupTruck
+      - Truck_Bus
+      - Train
+      - MotorcycleScooter
+      - Bicyclist
+      - OtherMoving
+
+  - name: Lane
+    pixel_value: [128, 0, 192]    # LaneMkgsDriv
+    map_classes:
+      - LaneMkgsDriv
+      - LaneMkgsNonDriv
+
+  - name: Building2
+    pixel_value: [128, 0, 0]      # Building
+    map_classes:
+      - Building
+      - Wall
+      - Tunnel
+      - Archway

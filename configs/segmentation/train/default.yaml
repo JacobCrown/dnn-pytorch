@@ -2,15 +2,20 @@
 
 epochs: 50
 batch_size: 12
-num_workers: 0
-pin_memory: false
+num_workers: 8
+pin_memory: true
 shuffle: true
 
+# DataLoader performance knobs
+persistent_workers: false
+prefetch_factor: 2
+drop_last: false
+
 optimizer:
-  name: Adam  # options: Adam, AdamW, SGD
+  name: AdamW  # options: Adam, AdamW, SGD
   params:
     lr: 0.001
-    weight_decay: 0.0001
+    weight_decay: 0.01
 
 # LR scheduler
 scheduler:
@@ -19,19 +24,28 @@ scheduler:
     T_max: 100
     eta_min: 0.0001
 
-# Loss function
+# Loss function(s) - can be single or list of losses
+# When using multiple losses, they are combined with optional weights
 loss_function:
-  name: CrossEntropyLoss   # options: CrossEntropyLoss, FocalLoss
-  params: {ignore_index: 255}
+  - name: FocalLoss   # options: CrossEntropyLoss, FocalLoss, SoftCrossEntropyLoss, DiceLoss, etc.
+    weight: 0.5
+    params:
+      mode: "multiclass"
+      ignore_index: 255
+  - name: DiceLoss
+    weight: 0.5
+    params:
+      mode: "multiclass"
+      ignore_index: 255
 
 # Mixed precision
-use_amp: false
+use_amp: true
 
 # Gradient clipping (null disables)
 gradient_clip: null
 
 # Resume from checkpoint
-resume_from_checkpoint: null
+resume_from_checkpoint: "output/segmentation/CamVid/DeepLabV3Plus_resnet18_368x480_10epochs_12bs/checkpoints/best.pth"
 
 # Early stopping
 early_stopping_patience: null
@@ -41,3 +55,7 @@ root_dir: "output"
 checkpoints_dir: "checkpoints"
 logs_dir: "logs"
 visualize_dir: "visualizations"
+
+# visualization flags
+visualize_pre_train: true
+visualize_post_train: true

@@ -7,10 +7,14 @@ from pathlib import Path
 import albumentations as A
 import numpy as np
 import torch
-from tqdm import tqdm
 
 from src.core.dataset import BaseDataset
-from src.segmentation.config import ClassConfig
+from src.segmentation.config import ClassConfig, ClassMappingConfig
+from src.segmentation.mask_utils import (
+    build_lookup_table,
+    find_mask_file,
+    prepare_masks,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +55,7 @@ class SegmentationDataset(BaseDataset):
         data_root (Path): Root directory containing images and masks
         transforms (Compose): Transforms to apply to images and masks
         class_config (list[ClassConfig]): A list of class configurations.
+        class_mapping (list[ClassMappingConfig]): Optional mapping to merge classes.
         extensions (list[str]): List of image file extensions to include
         mask_extensions (list[str]): List of mask file extensions to include
         max_samples (int | None): Maximum number of samples to load
@@ -64,21 +69,12 @@ class SegmentationDataset(BaseDataset):
         extensions: list[str],
         mask_extensions: list[str],
         max_samples: int | None = None,
+        class_mapping: list[ClassMappingConfig] | None = None,
     ):
         self.mask_extensions = mask_extensions
-        self.class_config = class_config
-        self.rgb_to_class_idx = {
-            tuple[int, ...](c.pixel_value): idx
-            for idx, c in enumerate[ClassConfig](class_config)
-        }
-        self.class_idx_to_rgb = {
-            idx: tuple[int, ...](c.pixel_value)
-            for idx, c in enumerate[ClassConfig](class_config)
-        }
-        self.class_idx_to_name = {
-            idx: c.name for idx, c in enumerate[ClassConfig](class_config)
-        }
-        self.lookup_table = self._create_lookup_table()
+        self.class_config = self._create_class_config(class_config, class_mapping)
+        self.lookup_table = build_lookup_table(self.rgb_to_class_idx)
+        self._data_distribution: list[DataDistribution] | None = None
 
         super().__init__(
             data_root=data_root,
@@ -87,53 +83,52 @@ class SegmentationDataset(BaseDataset):
             max_samples=max_samples,
         )
 
-    def _create_lookup_table(self) -> np.ndarray:
-        """Create a lookup table for efficient mask conversion."""
-        # Full 256^3 LUT (16,777,216 entries) keeps conversion O(1) and safe for any RGB.
-        # Use uint8 to keep memory reasonable (~16MB). This implies classes <= 255.
-        max_class = max(self.rgb_to_class_idx.values(), default=0)
-        if max_class >= 255:
-            raise ValueError(
-                "SegmentationDataset LUT uses uint8; number of classes must be <= 255."
-            )
+    def _create_class_config(
+        self,
+        class_config: list[ClassConfig],
+        class_mapping: list[ClassMappingConfig] | None = None,
+    ) -> list[ClassConfig]:
+        """Create a final class configuration after applying merge/remap rules.
 
-        lut = np.full(256**3, 255, dtype=np.uint8)
-        for color, class_id in self.rgb_to_class_idx.items():
-            color_id = color[0] * 256**2 + color[1] * 256 + color[2]
-            lut[color_id] = np.uint8(class_id)
-        return lut
-
-    def _convert_pixel_mask_to_class_mask(self, mask: np.ndarray) -> np.ndarray:
-        """Converts an RGB mask to a class index mask using a lookup table.
-
-        Args:
-            mask (np.ndarray): The RGB mask as a NumPy array (H, W, 3).
+        This method:
+        1. Validates class_config (no duplicate names/colors)
+        2. Validates class_mapping (source classes exist, no double-mapping, etc.)
+        3. Builds final class list (removes merged sources, adds new targets)
+        4. Sets up rgb_to_class_idx mapping (original RGB -> final class index)
+        5. Prints final classes
 
         Returns:
-            np.ndarray: A class index mask (H, W).
+            Final list of ClassConfig after applying mappings.
         """
-        mask_int32 = mask.astype(np.int32)
-        integer_mask = mask_int32.dot(np.array([256**2, 256, 1], dtype=np.int32))
-        class_mask = self.lookup_table[integer_mask].astype(np.int64)
-        return class_mask
+        final_classes, rgb_to_class_idx, class_idx_to_rgb, class_idx_to_name = (
+            _build_class_mappings(class_config, class_mapping)
+        )
+
+        self.rgb_to_class_idx = rgb_to_class_idx
+        self.class_idx_to_rgb = class_idx_to_rgb
+        self.class_idx_to_name = class_idx_to_name
+
+        if not class_mapping:
+            logger.info("Final classes (no mapping): %d", len(final_classes))
+        else:
+            logger.info(
+                "Final classes after applying class_mapping: %d", len(final_classes)
+            )
+
+        for idx, c in enumerate(final_classes):
+            logger.info("  [%d] %s -> %s", idx, c.name, c.pixel_value)
+
+        return final_classes
 
     def _prepare_mask_files(self, image_files: list[Path]) -> None:
         """Find corresponding mask files for each image, preprocess them and save to a better .npy format"""
-        for image_file in tqdm(
-            image_files,
-            desc=f"Preparing mask files for {self.data_root}",
-            total=len(image_files),
-        ):
-            mask_file = self._find_mask_file(self.data_root / "masks", image_file)
-            if mask_file is not None:
-                mask_file_npy = mask_file.with_suffix(".npy")
-                if mask_file_npy.exists():
-                    continue
-                mask_rgb = self._load_image(mask_file)
-                mask = self._convert_pixel_mask_to_class_mask(mask_rgb)
-                np.save(mask_file_npy, mask.astype(np.int64), allow_pickle=False)
-            else:
-                logger.warning(f"No mask found for image: {image_file}")
+        masks_dir = self.data_root / "masks"
+        prepare_masks(
+            image_files=image_files,
+            masks_dir=masks_dir,
+            mask_extensions=self.mask_extensions,
+            lookup_table=self.lookup_table,
+        )
 
     def _build_samples(self) -> None:
         """Build the list of samples for segmentation."""
@@ -152,7 +147,7 @@ class SegmentationDataset(BaseDataset):
         self._prepare_mask_files(image_files)
 
         for image_file in image_files:
-            mask_file = self._find_mask_file(masks_dir, image_file)
+            mask_file = find_mask_file(masks_dir, image_file, self.mask_extensions)
             if mask_file is not None:
                 self.samples.append((image_file, mask_file))
                 if self.max_samples and len(self.samples) >= self.max_samples:
@@ -162,18 +157,6 @@ class SegmentationDataset(BaseDataset):
 
         if not self.samples:
             raise RuntimeError("No valid image-mask pairs found")
-
-    def _find_mask_file(self, masks_dir: Path, image_file: Path) -> Path | None:
-        """Find the corresponding mask file for an image file."""
-        for mask_ext in self.mask_extensions:
-            mask_file = masks_dir / f"{image_file.stem}{mask_ext}"
-            if mask_file.exists():
-                return mask_file
-
-        logger.warning(
-            f"No mask found for image with exact name match: {image_file.stem}"
-        )
-        return None
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         """Get a sample from the dataset.
@@ -191,10 +174,9 @@ class SegmentationDataset(BaseDataset):
         mask = np.load(mask_path.with_suffix(".npy"))
 
         # Apply paired transforms
-        if self.transforms is not None:
-            transformed = self.transforms(image=image, mask=mask)
-            image_a: torch.Tensor = transformed["image"]
-            mask_a: torch.Tensor = transformed["mask"]
+        transformed = self.transforms(image=image, mask=mask)
+        image_a: torch.Tensor = transformed["image"]
+        mask_a: torch.Tensor = transformed["mask"]
 
         # The mask should be a LongTensor with shape (H, W) for CrossEntropyLoss
         if mask_a.ndim == 3 and mask_a.shape[0] == 1:
@@ -210,7 +192,7 @@ class SegmentationDataset(BaseDataset):
         """
         return [self.class_idx_to_name[i] for i in range(len(self.class_config))]
 
-    def get_data_distribution(self) -> list[DataDistribution]:
+    def get_data_distribution(self, use_cache: bool = True) -> list[DataDistribution]:
         """
         Get the class pixel distribution across the dataset.
 
@@ -218,26 +200,173 @@ class SegmentationDataset(BaseDataset):
             List[DataDistribution]: For each class, shows the absolute pixel count and
             the percentage of pixels (across all masks) belonging to that class.
         """
-        # Initialize per-class pixel counters
+        if use_cache and self._data_distribution is not None:
+            return self._data_distribution
+
         num_classes = len(self.get_class_names())
-        pixel_counts = [0] * num_classes
+        pixel_counts = np.zeros(num_classes, dtype=np.int64)
         total_pixels = 0
 
         for _, mask_path in self.samples:
             mask = np.load(mask_path.with_suffix(".npy"))
-            # mask shape: (H, W)
             flat_mask = mask.flatten()
             total_pixels += flat_mask.size
-            for class_idx in range(num_classes):
-                pixel_counts[class_idx] += np.sum(flat_mask == class_idx)
+            counts = np.bincount(flat_mask, minlength=num_classes)
+            pixel_counts += counts
 
         data_distribution = []
         for class_idx, class_name in enumerate(self.get_class_names()):
-            count = pixel_counts[class_idx]
+            count = int(pixel_counts[class_idx])
             percentage = (count / total_pixels) * 100 if total_pixels > 0 else 0
             data_distribution.append(
                 DataDistribution(
                     class_name=class_name, count=count, percentage=percentage
                 )
             )
+        self._data_distribution = data_distribution
         return data_distribution
+
+
+def _validate_base_classes(
+    class_config: list[ClassConfig],
+) -> dict[str, ClassConfig]:
+    if not class_config:
+        raise ValueError("class_config cannot be empty for segmentation.")
+
+    base_by_name: dict[str, ClassConfig] = {}
+    rgb_to_name: dict[tuple[int, int, int], str] = {}
+    for c in class_config:
+        if c.name in base_by_name:
+            raise ValueError(f"Duplicate class name in class_config: '{c.name}'")
+        if len(c.pixel_value) != 3:
+            raise ValueError(
+                f"class_config[{c.name}]: pixel_value must have 3 elements"
+            )
+        rgb = (c.pixel_value[0], c.pixel_value[1], c.pixel_value[2])
+        if rgb in rgb_to_name:
+            raise ValueError(
+                f"Duplicate pixel_value {list(rgb)} in class_config: "
+                f"'{rgb_to_name[rgb]}' and '{c.name}'"
+            )
+
+        base_by_name[c.name] = c
+        rgb_to_name[rgb] = c.name
+
+    return base_by_name
+
+
+def _validate_class_mapping(
+    class_mapping: list[ClassMappingConfig] | None,
+    base_by_name: dict[str, ClassConfig],
+) -> tuple[dict[str, str], dict[str, ClassMappingConfig]]:
+    if not class_mapping:
+        return {}, {}
+
+    source_to_target: dict[str, str] = {}
+    target_configs: dict[str, ClassMappingConfig] = {}
+
+    for mapping in class_mapping:
+        if not mapping.map_classes:
+            raise ValueError(
+                f"class_mapping[{mapping.name}]: map_classes cannot be empty"
+            )
+        if mapping.name in target_configs:
+            raise ValueError(
+                f"Duplicate target name in class_mapping: '{mapping.name}'"
+            )
+        if mapping.name not in base_by_name:
+            if not mapping.pixel_value:
+                raise ValueError(
+                    f"class_mapping[{mapping.name}]: must provide pixel_value for new class"
+                )
+            if len(mapping.pixel_value) != 3:
+                raise ValueError(
+                    f"class_mapping[{mapping.name}]: pixel_value must have 3 elements"
+                )
+
+        target_configs[mapping.name] = mapping
+
+        for src_name in mapping.map_classes:
+            if src_name not in base_by_name:
+                raise ValueError(
+                    f"class_mapping[{mapping.name}]: source class '{src_name}' not found in class_config"
+                )
+            if src_name in source_to_target:
+                raise ValueError(
+                    f"Source class '{src_name}' mapped multiple times: "
+                    f"to '{source_to_target[src_name]}' and to '{mapping.name}'"
+                )
+            source_to_target[src_name] = mapping.name
+
+    for target_name in target_configs:
+        if target_name in source_to_target:
+            raise ValueError(
+                f"class_mapping target '{target_name}' is also a source in map_classes"
+            )
+
+    return source_to_target, target_configs
+
+
+def _build_final_classes(
+    class_config: list[ClassConfig],
+    base_by_name: dict[str, ClassConfig],
+    source_to_target: dict[str, str],
+    target_configs: dict[str, ClassMappingConfig],
+) -> list[ClassConfig]:
+    mapped_sources = set(source_to_target.keys())
+    final_classes = [c for c in class_config if c.name not in mapped_sources]
+
+    for target_name, mapping in target_configs.items():
+        if target_name not in base_by_name:
+            final_classes.append(
+                ClassConfig(name=mapping.name, pixel_value=mapping.pixel_value)
+            )
+
+    rgb_to_name: dict[tuple[int, int, int], str] = {}
+    for c in final_classes:
+        rgb = (c.pixel_value[0], c.pixel_value[1], c.pixel_value[2])
+        if rgb in rgb_to_name:
+            raise ValueError(
+                f"Final classes have duplicate pixel_value {list(rgb)}: "
+                f"'{rgb_to_name[rgb]}' and '{c.name}'"
+            )
+        rgb_to_name[rgb] = c.name
+
+    return final_classes
+
+
+def _build_class_mappings(
+    class_config: list[ClassConfig],
+    class_mapping: list[ClassMappingConfig] | None,
+) -> tuple[
+    list[ClassConfig],
+    dict[tuple[int, int, int], int],
+    dict[int, tuple[int, int, int]],
+    dict[int, str],
+]:
+    base_by_name = _validate_base_classes(class_config)
+    source_to_target, target_configs = _validate_class_mapping(
+        class_mapping, base_by_name
+    )
+    final_classes = _build_final_classes(
+        class_config, base_by_name, source_to_target, target_configs
+    )
+
+    final_name_to_idx = {c.name: idx for idx, c in enumerate(final_classes)}
+    rgb_to_class_idx: dict[tuple[int, int, int], int] = {}
+
+    for c in class_config:
+        rgb = (c.pixel_value[0], c.pixel_value[1], c.pixel_value[2])
+        if c.name in source_to_target:
+            target_name = source_to_target[c.name]
+            rgb_to_class_idx[rgb] = final_name_to_idx[target_name]
+        else:
+            rgb_to_class_idx[rgb] = final_name_to_idx[c.name]
+
+    class_idx_to_rgb = {
+        idx: (c.pixel_value[0], c.pixel_value[1], c.pixel_value[2])
+        for idx, c in enumerate(final_classes)
+    }
+    class_idx_to_name = {idx: c.name for idx, c in enumerate(final_classes)}
+
+    return final_classes, rgb_to_class_idx, class_idx_to_rgb, class_idx_to_name

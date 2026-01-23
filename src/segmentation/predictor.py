@@ -50,26 +50,12 @@ class SegmentationPredictor:
         model.to(self.device)
         model.eval()
 
-        # preprocessing
-        data_config = smp.encoders.get_preprocessing_params(
-            encoder_name=model_config["encoder_name"],
-            pretrained=model_config["encoder_weights"],
-        )
-        mean = data_config.get("mean")
-        std = data_config.get("std")
-        if isinstance(mean, int):
-            mean = (mean,) * model_config["in_channels"]
-        if isinstance(std, int):
-            std = (std,) * model_config["in_channels"]
-        height = model_config["height"]
-        width = model_config["width"]
-        preprocessing = A.Compose(
-            [
-                A.Resize(height, width),
-                A.Normalize(mean=mean, std=std),
-                ToTensorV2(transpose_mask=True),
-            ]
-        )
+        transforms = [
+            A.Resize(height=368, width=480),
+            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            ToTensorV2(transpose_mask=True),
+        ]
+        preprocessing = A.Compose(transforms)
 
         class_idx_to_rgb = checkpoint["class_idx_to_rgb"]
         class_idx_to_name = checkpoint["class_idx_to_name"]

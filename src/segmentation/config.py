@@ -13,6 +13,15 @@ class ClassConfig(BaseConfig):
 
 
 @dataclass
+class ClassMappingConfig(BaseConfig):
+    """Configuration for the class mapping."""
+
+    name: str = "class_name"
+    pixel_value: list[int] = field(default_factory=list)
+    map_classes: list[str] = field(default_factory=list)
+
+
+@dataclass
 class SegmentationDataConfig(BaseConfig):
     """Configuration for the segmentation dataset."""
 
@@ -26,6 +35,7 @@ class SegmentationDataConfig(BaseConfig):
     mask_extensions: list[str] = field(default_factory=lambda: [".png"])
     max_samples: int | None = None
     class_config: list[ClassConfig] = field(default_factory=list)
+    class_mapping: list[ClassMappingConfig] = field(default_factory=list)
 
 
 @dataclass
@@ -40,6 +50,7 @@ class SegmentationModelConfig(BaseConfig):
     in_channels: int = 3
     classes: int = 2
     params: dict[str, Any] = field(default_factory=dict)
+    preprocessing: list[AugmentationConfig] = field(default_factory=list)
 
 
 @dataclass

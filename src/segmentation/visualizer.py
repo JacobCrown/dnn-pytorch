@@ -16,7 +16,7 @@ from tqdm import tqdm
 from src.common.utils import DEVICE
 from src.core.metrics import BaseMetrics
 from src.core.visualizer import BaseVisualizer
-from src.segmentation.dataset import SegmentationDataset
+from src.segmentation.dataset import DataDistribution, SegmentationDataset
 
 logger = logging.getLogger(__name__)
 
@@ -36,10 +36,7 @@ class SegmentationVisualizer(BaseVisualizer):
         Returns:
             Dictionary mapping class indices to RGB colors
         """
-        color_map = {}
-        for rgb_color, class_idx in dataset.rgb_to_class_idx.items():
-            color_map[class_idx] = rgb_color
-        return color_map
+        return dict(dataset.class_idx_to_rgb)
 
     @staticmethod
     def _mask_to_rgb(
@@ -109,13 +106,7 @@ class SegmentationVisualizer(BaseVisualizer):
             else:
                 continue
 
-            mask = cv2.imread(mask_path)
-            if mask is not None:
-                mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)  # type: ignore
-                # Convert RGB mask to class indices
-                mask = dataset._convert_pixel_mask_to_class_mask(mask)
-            else:
-                continue
+            mask = np.load(mask_path.with_suffix(".npy"))
 
             # Apply augmentations if requested
             if with_augmentations and dataset.transforms is not None:
@@ -249,74 +240,57 @@ class SegmentationVisualizer(BaseVisualizer):
             axes[idx, 2].axis("off")
 
         plt.tight_layout()
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.savefig(save_path)
         plt.close()
 
     def visualize_data_distribution(
         self,
         data_loader: DataLoader,
+        data_distribution: list[DataDistribution] | None = None,
+        min_percentage: float = 0.1,
         figsize: tuple[int, int] = (14, 8),
     ) -> None:
         """Visualize the distribution of classes based on pixel counts.
 
         Args:
             data_loader: DataLoader containing the dataset
+            data_distribution: Optional precomputed data distribution
+            min_percentage: Minimum percentage threshold for plotting
             figsize: Figure size for the plot
         """
         dataset = data_loader.dataset
         if not isinstance(dataset, SegmentationDataset):
             raise ValueError("Dataset must be a SegmentationDataset")
 
-        # Count pixels for each class
-        class_pixel_counts = {}
-        color_map = SegmentationVisualizer._create_color_map(dataset)
-
-        # Get class names from the dataset
-        class_names = dataset.get_class_names()
-
-        # Initialize counters
-        for class_idx in color_map:
-            class_pixel_counts[class_idx] = 0
-
-        logger.info("Computing pixel distribution...")
-        for _image_path, mask_path in tqdm(dataset.samples, desc="Processing masks"):
-            mask = cv2.imread(mask_path)
-            if mask is not None:
-                mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)  # type: ignore
-                mask = dataset._convert_pixel_mask_to_class_mask(mask)
-
-                # Count pixels for each class
-                unique, counts = np.unique(mask, return_counts=True)
-                for class_idx, count in zip(unique, counts, strict=False):
-                    if class_idx in class_pixel_counts:
-                        class_pixel_counts[class_idx] += count
-
-        # Calculate percentages
-        total_pixels = sum(class_pixel_counts.values())
-        class_percentages = {
-            cls: (count / total_pixels * 100)
-            for cls, count in class_pixel_counts.items()
-        }
+        if data_distribution is None:
+            logger.info("Using dataset data distribution for visualization...")
+            data_distribution = dataset.get_data_distribution()
+        if not data_distribution:
+            logger.warning("No data distribution available to visualize.")
+            return
 
         # Sort by pixel count
-        sorted_classes = sorted(
-            class_pixel_counts.items(), key=lambda x: x[1], reverse=True
+        sorted_distribution = sorted(
+            data_distribution, key=lambda item: item.count, reverse=True
         )
 
-        # Filter out classes with very few pixels (< 0.1%)
-        filtered_classes = [
-            (cls, count)
-            for cls, count in sorted_classes
-            if class_percentages[cls] >= 0.1
+        # Filter out classes with very few pixels
+        filtered_distribution = [
+            item for item in sorted_distribution if item.percentage >= min_percentage
         ]
+        if not filtered_distribution:
+            logger.warning(
+                "No classes exceed min_percentage=%.2f%%; skipping plot.",
+                min_percentage,
+            )
+            return
 
-        class_indices = [cls for cls, _ in filtered_classes]
-        filtered_class_names = [class_names[cls] for cls in class_indices]
-        pixel_counts = [count for _, count in filtered_classes]
-        percentages = [class_percentages[cls] for cls in class_indices]
+        filtered_class_names = [item.class_name for item in filtered_distribution]
+        pixel_counts = [item.count for item in filtered_distribution]
+        percentages = [item.percentage for item in filtered_distribution]
 
         # Create figure with one subplot
-        fig, ax = plt.subplots(1, 1, figsize=figsize)
+        _, ax = plt.subplots(1, 1, figsize=figsize)
 
         # Bar plot with pixel counts
         colors = sns.color_palette("husl", len(filtered_class_names))
@@ -344,7 +318,7 @@ class SegmentationVisualizer(BaseVisualizer):
 
         plt.tight_layout()
         save_path = self.save_dir / "data_distribution.png"
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.savefig(save_path)
         plt.close()
 
         logger.info(f"Data distribution plot saved to {save_path}")
@@ -454,7 +428,7 @@ class SegmentationVisualizer(BaseVisualizer):
 
         plt.tight_layout()
         save_path = self.save_dir / "predictions.png"
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.savefig(save_path)
         plt.close()
 
         logger.info(f"Predictions visualization saved to {save_path}")
@@ -564,7 +538,7 @@ class SegmentationVisualizer(BaseVisualizer):
             bar_height = min(bar_height, 50)  # Max height
             figsize = (12, bar_height)
 
-        fig, ax = plt.subplots(figsize=figsize)
+        _, ax = plt.subplots(figsize=figsize)
         colors = sns.color_palette("viridis", num_classes)
         # mypy doesn't like this, but it's valid
         sorted_colors = [colors[i] for i in sorted_indices]  # type: ignore
@@ -584,17 +558,7 @@ class SegmentationVisualizer(BaseVisualizer):
         ax.set_yticks(range(num_classes))
         ax.invert_yaxis()  # Display highest IoU at the top
 
-        # Dynamic font size for y-tick labels
-        if num_classes > 70:
-            tick_fontsize = 4
-        elif num_classes > 50:
-            tick_fontsize = 5
-        elif num_classes > 30:
-            tick_fontsize = 7
-        else:
-            tick_fontsize = 9
-
-        ax.set_yticklabels(sorted_class_names, fontsize=tick_fontsize)
+        ax.set_yticklabels(sorted_class_names, fontsize=9)
 
         # Add value labels on bars
         for bar in bars:
@@ -605,12 +569,12 @@ class SegmentationVisualizer(BaseVisualizer):
                 f"{width:.3f}",
                 ha="left",
                 va="center",
-                fontsize=max(4, tick_fontsize - 2),
+                fontsize=8,
             )
 
         plt.tight_layout()
         save_path = self.save_dir / "per_class_miou.png"
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.savefig(save_path)
         plt.close()
 
         logger.info(f"Per-class mIoU plot saved to {save_path}")
@@ -622,7 +586,7 @@ class SegmentationVisualizer(BaseVisualizer):
             metrics: Metrics object
             figsize: Figure size
         """
-        fig, ax = plt.subplots(figsize=figsize)
+        _, ax = plt.subplots(figsize=figsize)
 
         for key, values in metrics.losses.items():
             if values:  # Only plot if there are values
@@ -636,7 +600,7 @@ class SegmentationVisualizer(BaseVisualizer):
 
         plt.tight_layout()
         save_path = self.save_dir / "loss_curves.png"
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.savefig(save_path)
         plt.close()
 
         logger.info(f"Loss curves saved to {save_path}")
@@ -648,7 +612,7 @@ class SegmentationVisualizer(BaseVisualizer):
             metrics: Metrics object (must have ious attribute)
             figsize: Figure size
         """
-        fig, ax = plt.subplots(figsize=figsize)
+        _, ax = plt.subplots(figsize=figsize)
 
         # Access ious - will work for any metrics subclass that has it
         ious = getattr(metrics, "ious", {})
@@ -664,7 +628,7 @@ class SegmentationVisualizer(BaseVisualizer):
 
         plt.tight_layout()
         save_path = self.save_dir / "iou_curves.png"
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.savefig(save_path)
         plt.close()
 
         logger.info(f"IoU curves saved to {save_path}")

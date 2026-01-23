@@ -145,8 +145,8 @@ class SegmentationTrainer(
             Tuple of (average_loss, average_iou)
         """
         self.model.train()
-        total_loss = 0.0
-        total_iou = 0.0
+        total_loss = torch.tensor(0.0, device=DEVICE)
+        total_iou = torch.tensor(0.0, device=DEVICE)
         num_batches = len(self.train_loader)
 
         pbar = tqdm(self.train_loader, desc=f"Epoch {self.current_epoch + 1}")
@@ -181,18 +181,10 @@ class SegmentationTrainer(
                     )
                 self.optimizer.step()
 
-            total_loss += loss.item()
+            total_loss += loss
 
-            # Update progress bar
-            pbar.set_postfix(
-                {
-                    "Loss": f"{loss.item():.4f}",
-                    "mIoU": f"{miou:.4f}",
-                }
-            )
-
-        avg_loss = total_loss / num_batches
-        avg_iou = total_iou / num_batches
+        avg_loss = total_loss.item() / num_batches
+        avg_iou = total_iou.item() / num_batches
 
         return avg_loss, avg_iou
 
@@ -264,8 +256,8 @@ class SegmentationTrainer(
             A tuple of (average_loss, mIoU).
         """
         self.model.eval()
-        total_loss = 0.0
-        total_iou = 0.0
+        total_loss = torch.tensor(0.0, device=DEVICE)
+        total_iou = torch.tensor(0.0, device=DEVICE)
         num_batches = len(self.val_loader)
 
         with torch.inference_mode():
@@ -276,21 +268,20 @@ class SegmentationTrainer(
                     output = self.model(data)
                     loss = self.criterion(output, target)
 
-                total_loss += loss.item()
+                total_loss += loss
 
                 pred = output.argmax(dim=1)
-                iou = self._calculate_iou(pred, target)
-                total_iou += iou
+                total_iou += self._calculate_iou(pred, target)
 
-        avg_loss = total_loss / num_batches
-        avg_iou = total_iou / num_batches
+        avg_loss = total_loss.item() / num_batches
+        avg_iou = total_iou.item() / num_batches
         return avg_loss, avg_iou
 
     def _evaluate(self, test_loader: DataLoader) -> None:
         """Evaluate the model on test data."""
         self.model.eval()
-        total_loss = 0.0
-        total_iou = 0.0
+        total_loss = torch.tensor(0.0, device=DEVICE)
+        total_iou = torch.tensor(0.0, device=DEVICE)
         num_batches = len(test_loader)
 
         with torch.inference_mode():
@@ -302,13 +293,12 @@ class SegmentationTrainer(
                     loss = self.criterion(output, target)
 
                 pred = output.argmax(dim=1)
-                iou = self._calculate_iou(pred, target)
-                total_iou += iou
+                total_iou += self._calculate_iou(pred, target)
 
-                total_loss += loss.item()
+                total_loss += loss
 
-        avg_loss = total_loss / num_batches
-        avg_iou = total_iou / num_batches
+        avg_loss = total_loss.item() / num_batches
+        avg_iou = total_iou.item() / num_batches
 
         logger.info("Test Results:")
         logger.info(f"  Loss: {avg_loss:.4f}")
@@ -347,7 +337,7 @@ class SegmentationTrainer(
 
     # ================================ Helper Methods ================================
 
-    def _calculate_iou(self, pred: torch.Tensor, target: torch.Tensor) -> float:
+    def _calculate_iou(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """Calculate mean IoU (Jaccard) for a batch using TorchMetrics.
 
         Args:
@@ -364,4 +354,4 @@ class SegmentationTrainer(
             average="macro",
             ignore_index=255,
         )
-        return float(score.item())
+        return score
