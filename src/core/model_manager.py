@@ -18,14 +18,18 @@ class BaseModelManager[ModelConfigType: BaseConfig](ABC):
         """Initialize the base model manager."""
         self.model_cfg: ModelConfigType = model_cfg
         self.model: nn.Module = self.create_model().to(DEVICE)
-        self.preprocessing: A.Compose = self.create_preprocessing()
+        self.preprocessing: A.Compose = self.get_preprocessing()
 
     @abstractmethod
     def create_model(self) -> nn.Module:
         pass
 
     @abstractmethod
-    def create_preprocessing(self) -> A.Compose:
+    def get_preprocessing(self) -> A.Compose:
+        pass
+
+    @abstractmethod
+    def load_preprocessing(self, preprocessing: dict) -> None:
         pass
 
     @abstractmethod

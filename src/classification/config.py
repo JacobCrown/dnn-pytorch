@@ -21,6 +21,7 @@ class ClassificationModelConfig(BaseConfig):
     dropout: float = 0.2
     width: int = 224
     height: int = 224
+    preprocessing: list[AugmentationConfig] = field(default_factory=list)
 
 
 @dataclass

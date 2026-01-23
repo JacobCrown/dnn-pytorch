@@ -132,6 +132,9 @@ class BaseTrainer[
     def _load_checkpoint_common(self, checkpoint: dict) -> None:
         if "model_config" in checkpoint:
             self.model_manager.check_model_config(checkpoint["model_config"])
+            self.model_manager.load_preprocessing(
+                checkpoint["model_config"]["preprocessing"]
+            )
         else:
             raise ValueError("Model config not found in checkpoint")
 

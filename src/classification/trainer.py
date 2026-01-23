@@ -43,6 +43,8 @@ class ClassificationTrainer(
         test_loader: DataLoader | None = None,
     ):
         self.cfg: ClassificationConfig = cfg
+        # Task specific attributes
+        self.class_names: list[str] = train_loader.dataset.get_class_names()
         super().__init__(
             model_manager=model_manager,
             criterion=criterion,
@@ -53,8 +55,6 @@ class ClassificationTrainer(
             cfg=cfg.train,
             test_loader=test_loader,
         )
-        # Task specific attributes
-        self.class_names: list[str] = train_loader.dataset.get_class_names()
 
     # ================================ Overridden Abstract Methods ================================
 
