@@ -20,7 +20,7 @@ class BaseDataset(Dataset, ABC):
     def __init__(
         self,
         data_root: str | Path,
-        transforms: A.Compose | None = None,
+        transforms: A.Compose,
         extensions: list[str] | None = None,
         max_samples: int | None = None,
     ):
