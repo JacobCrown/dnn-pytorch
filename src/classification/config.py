@@ -30,7 +30,7 @@ class ClassificationModelConfig(BaseConfig):
     """Configuration for model architecture."""
 
     name: str = "resnet18"
-    num_classes: int = 10
+    num_classes: int | None = None
     in_channels: int = 3
     pretrained: bool = True
     dropout: float = 0.2

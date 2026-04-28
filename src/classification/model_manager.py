@@ -29,6 +29,10 @@ class ClassificationModelManager(BaseModelManager[ClassificationModelConfig]):
         self._apply_freeze_policy()
 
     def create_model(self) -> nn.Module:
+        if self.model_cfg.num_classes is None:
+            raise ValueError(
+                "num_classes is not set — it must be derived from the training dataset before building the model."
+            )
         return timm.create_model(
             self.model_cfg.name,
             pretrained=bool(self.model_cfg.pretrained),
