@@ -1,6 +1,12 @@
+import logging
+from collections.abc import Sized
+from typing import cast
+
 from torch.utils.data import DataLoader, Dataset
 
 from src.common.config import BaseTrainingConfig
+
+logger = logging.getLogger(__name__)
 
 
 def create_data_loaders(
@@ -8,16 +14,25 @@ def create_data_loaders(
     train_dataset: Dataset,
     val_dataset: Dataset,
     test_dataset: Dataset | None = None,
-) -> tuple[DataLoader, DataLoader, DataLoader | None]:
+    *,
+    allow_empty_val_test: bool = False,
+) -> tuple[DataLoader, DataLoader | None, DataLoader | None]:
     """Create data loaders for training, validation, and test sets.
     Args:
         config: Training configuration.
         train_dataset: Training dataset.
         val_dataset: Validation dataset.
         test_dataset: Test dataset.
+        allow_empty_val_test: If True, skip building loaders for val/test splits
+            with zero samples (returns None) instead of failing in DataLoader.
     Returns:
         A tuple containing the training, validation, and test data loaders.
     """
+    if len(cast(Sized, train_dataset)) == 0:
+        raise ValueError(
+            "Training dataset is empty — add images or fix data paths before training."
+        )
+
     common_kwargs: dict = {
         "num_workers": config.num_workers,
         "pin_memory": config.pin_memory,
@@ -36,22 +51,33 @@ def create_data_loaders(
         **common_kwargs,
     )
 
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=config.batch_size,
-        shuffle=False,
-        drop_last=False,
-        **common_kwargs,
-    )
-
-    test_loader = None
-    if test_dataset is not None:
-        test_loader = DataLoader(
-            test_dataset,
+    if allow_empty_val_test and len(cast(Sized, val_dataset)) == 0:
+        logger.warning(
+            "Validation dataset is empty — validation will be skipped for this run."
+        )
+        val_loader = None
+    else:
+        val_loader = DataLoader(
+            val_dataset,
             batch_size=config.batch_size,
             shuffle=False,
             drop_last=False,
             **common_kwargs,
         )
+
+    test_loader = None
+    if test_dataset is not None:
+        if allow_empty_val_test and len(cast(Sized, test_dataset)) == 0:
+            logger.warning(
+                "Test dataset is empty — final test evaluation will be skipped."
+            )
+        else:
+            test_loader = DataLoader(
+                test_dataset,
+                batch_size=config.batch_size,
+                shuffle=False,
+                drop_last=False,
+                **common_kwargs,
+            )
 
     return train_loader, val_loader, test_loader
