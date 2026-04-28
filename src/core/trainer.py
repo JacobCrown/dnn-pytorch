@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 
 from src.common.config import BaseTrainingConfig
 from src.common.utils import DEVICE
+from src.core.ema import ModelEMA
 from src.core.metrics import BaseMetrics
 from src.core.model_manager import BaseModelManager
 from src.core.visualizer import BaseVisualizer
@@ -91,6 +92,16 @@ class BaseTrainer[
         # Training state
         self.current_epoch: int = 0
         self.num_epochs: int = self.train_cfg.epochs
+        self.ema: ModelEMA | None = (
+            ModelEMA(
+                self.model,
+                decay=self.train_cfg.ema.decay,
+                update_after_step=self.train_cfg.ema.update_after_step,
+                update_every=self.train_cfg.ema.update_every,
+            )
+            if self.train_cfg.ema.enabled
+            else None
+        )
 
         # Setup visualizer
         self.visualizer: VisualizerType = self.visualizer_cls(
@@ -142,10 +153,24 @@ class BaseTrainer[
         else:
             raise ValueError("Model config not found in checkpoint")
 
-        if "model_state_dict" in checkpoint:
-            self.model_manager.load_model_state_dict(checkpoint["model_state_dict"])
+        model_state_key = (
+            "training_model_state_dict"
+            if "training_model_state_dict" in checkpoint
+            else "model_state_dict"
+        )
+        if model_state_key in checkpoint:
+            self.model_manager.load_model_state_dict(checkpoint[model_state_key])
         else:
             raise ValueError("Model state dict not found in checkpoint")
+
+        if self.ema is not None:
+            if "ema_state_dict" in checkpoint:
+                self.ema.load_state_dict(checkpoint["ema_state_dict"])
+            else:
+                logger.warning(
+                    "EMA is enabled, but checkpoint has no ema_state_dict. "
+                    "Initializing EMA from loaded model weights."
+                )
 
         if "optimizer_state_dict" in checkpoint:
             self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -175,30 +200,71 @@ class BaseTrainer[
         if self.visualize_post_train:
             self._visualize_post_train()
 
-    def _save_checkpoint(self, filename: str) -> None:
+    def _after_optimizer_step(self) -> None:
+        """Update optional model EMA after a successful optimizer step."""
+        if self.ema is not None:
+            self.ema.update(self.model)
+
+    def _save_checkpoint(
+        self,
+        filename: str,
+        *,
+        model_state_dict: dict | None = None,
+        include_training_model_state_dict: bool = False,
+        extra_fields: dict | None = None,
+    ) -> None:
         """Save model checkpoint.
 
         Args:
             filename: Name of the checkpoint file
         """
-        checkpoint = self._create_checkpoint()
+        checkpoint = self._create_checkpoint(
+            model_state_dict=model_state_dict,
+            include_training_model_state_dict=include_training_model_state_dict,
+            extra_fields=extra_fields,
+        )
         filepath = self.checkpoints_dir / filename
         torch.save(checkpoint, filepath)
 
-    def _create_checkpoint(self) -> dict:
-        checkpoint_dict = self._create_checkpoint_common()
+    def _create_checkpoint(
+        self,
+        *,
+        model_state_dict: dict | None = None,
+        include_training_model_state_dict: bool = False,
+        extra_fields: dict | None = None,
+    ) -> dict:
+        checkpoint_dict = self._create_checkpoint_common(
+            model_state_dict=model_state_dict,
+            include_training_model_state_dict=include_training_model_state_dict,
+        )
         checkpoint_dict.update(self._create_checkpoint_task_specific())
+        if extra_fields:
+            checkpoint_dict.update(extra_fields)
         return checkpoint_dict
 
-    def _create_checkpoint_common(self) -> dict:
-        return {
+    def _create_checkpoint_common(
+        self,
+        *,
+        model_state_dict: dict | None = None,
+        include_training_model_state_dict: bool = False,
+    ) -> dict:
+        checkpoint = {
             "epoch": self.current_epoch,
-            "model_state_dict": self.model_manager.get_model_state_dict(),
+            "model_state_dict": model_state_dict
+            if model_state_dict is not None
+            else self.model_manager.get_model_state_dict(),
             "model_config": self.model_manager.model_cfg.to_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": self.scheduler.state_dict(),
             "metrics_data": self.metrics.to_dict(),
         }
+        if include_training_model_state_dict:
+            checkpoint["training_model_state_dict"] = (
+                self.model_manager.get_model_state_dict()
+            )
+        if self.ema is not None:
+            checkpoint["ema_state_dict"] = self.ema.state_dict()
+        return checkpoint
 
     # ================================ Abstract Methods ================================
 

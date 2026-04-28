@@ -49,6 +49,13 @@ use_amp: true
 # Gradient clipping (null disables)
 gradient_clip: null
 
+# Exponential moving average of model weights
+ema:
+  enabled: false
+  decay: 0.9999
+  update_after_step: 0
+  update_every: 1
+
 # Resume from checkpoint path
 resume_from_checkpoint: null
 # Run test evaluation with:
@@ -66,4 +73,4 @@ visualize_dir: "visualizations"
 
 # visualization flags
 visualize_pre_train: false
-visualize_post_train: true
+visualize_post_train: false

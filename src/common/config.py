@@ -136,6 +136,16 @@ class LossFunctionConfig(BaseConfig):
 
 
 @dataclass
+class EMAConfig(BaseConfig):
+    """Exponential moving average settings for model weights."""
+
+    enabled: bool = False
+    decay: float = 0.9999
+    update_after_step: int = 0
+    update_every: int = 1
+
+
+@dataclass
 class BaseDataConfig(BaseConfig):
     """Configuration for data loading and preprocessing."""
 
@@ -188,6 +198,9 @@ class BaseTrainingConfig(BaseConfig):
 
     # Gradient clipping
     gradient_clip: float | None = None
+
+    # Exponential moving average of model weights
+    ema: EMAConfig = field(default_factory=EMAConfig)
 
     # Root directory for output files
     root_dir: str = "output"

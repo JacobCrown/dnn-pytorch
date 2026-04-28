@@ -309,13 +309,17 @@ class ClassificationTrainer(
                 if self.grad_clip is not None:
                     self.scaler.unscale_(self.optimizer)
                     torch.nn.utils.clip_grad_norm_(trainable_parameters, self.grad_clip)
+                scale_before_step = self.scaler.get_scale()
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
+                if self.scaler.get_scale() >= scale_before_step:
+                    self._after_optimizer_step()
             else:
                 loss.backward()
                 if self.grad_clip is not None:
                     torch.nn.utils.clip_grad_norm_(trainable_parameters, self.grad_clip)
                 self.optimizer.step()
+                self._after_optimizer_step()
 
             total_loss += loss
 
@@ -330,6 +334,7 @@ class ClassificationTrainer(
         """Train the model."""
         patience_counter = 0
         best_val_loss = float("inf")
+        best_ema_val_loss = float("inf")
 
         for epoch in range(self.current_epoch, self.num_epochs):
             self.current_epoch = epoch
@@ -348,6 +353,14 @@ class ClassificationTrainer(
                 val_loss, val_acc = self._validate()
                 self.metrics.losses["val"].append(val_loss)
                 self.metrics.accuracies["val"].append(val_acc)
+
+            ema_val_loss: float | None = None
+            ema_val_acc: float | None = None
+            if self.ema is not None:
+                if self.val_loader is None:
+                    ema_val_loss, ema_val_acc = val_loss, val_acc
+                else:
+                    ema_val_loss, ema_val_acc = self._validate_with_ema()
 
             # Learning rate scheduling
             if self.scheduler is not None:
@@ -378,17 +391,48 @@ class ClassificationTrainer(
                     val_acc,
                     gpu,
                 )
+            if ema_val_loss is not None and ema_val_acc is not None:
+                logger.info(
+                    "Epoch %d/%d | ema val loss=%.4f acc=%.2f%%",
+                    epoch + 1,
+                    self.num_epochs,
+                    ema_val_loss,
+                    ema_val_acc,
+                )
 
             # Always save last checkpoint
-            self._save_checkpoint("last.pth")
+            self._save_classification_checkpoint(
+                "last.pth",
+                variant="online",
+                val_loss=val_loss,
+            )
+            if self.ema is not None and ema_val_loss is not None:
+                self._save_ema_classification_checkpoint(
+                    "last_ema.pth",
+                    val_loss=ema_val_loss,
+                )
 
             # Save best model when validation metric improves
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                self._save_checkpoint("best.pth")
+                self._save_classification_checkpoint(
+                    "best.pth",
+                    variant="online",
+                    val_loss=val_loss,
+                )
                 patience_counter = 0
             else:
                 patience_counter += 1
+            if (
+                self.ema is not None
+                and ema_val_loss is not None
+                and ema_val_loss < best_ema_val_loss
+            ):
+                best_ema_val_loss = ema_val_loss
+                self._save_ema_classification_checkpoint(
+                    "best_ema.pth",
+                    val_loss=ema_val_loss,
+                )
 
             # Early stopping
             if (
@@ -442,6 +486,12 @@ class ClassificationTrainer(
 
         return avg_loss, accuracy
 
+    def _validate_with_ema(self) -> tuple[float, float]:
+        if self.ema is None:
+            raise RuntimeError("EMA validation requested but EMA is disabled")
+        with self.ema.average_parameters(self.model):
+            return self._validate()
+
     def _evaluate(self, test_loader: DataLoader) -> None:
         """Evaluate the model on test data."""
         summary = evaluate_classification_model(
@@ -456,25 +506,115 @@ class ClassificationTrainer(
         self.metrics.accuracies["test"].append(summary.accuracy)
 
     def _save_predictor_checkpoint(self, filename: str = "predictor.pth") -> None:
-        best_checkpoint_path = self.checkpoints_dir / "best.pth"
-        if not best_checkpoint_path.exists():
+        candidates = [self.checkpoints_dir / "best.pth"]
+        if self.ema is not None:
+            candidates.append(self.checkpoints_dir / "best_ema.pth")
+        existing_candidates = [path for path in candidates if path.exists()]
+        if not existing_candidates:
             logger.warning(
-                "Skipping predictor checkpoint export because %s does not exist",
-                artifact_rel_to_experiment(best_checkpoint_path, self.root_dir),
+                "Skipping predictor checkpoint export because no best checkpoint exists"
             )
             return
 
-        checkpoint = torch.load(
-            str(best_checkpoint_path), map_location=DEVICE, weights_only=False
+        source_path, checkpoint = self._select_predictor_source_checkpoint(
+            existing_candidates
         )
         predictor_checkpoint = build_predictor_checkpoint_payload(checkpoint)
         predictor_checkpoint_path = self.checkpoints_dir / filename
         torch.save(predictor_checkpoint, predictor_checkpoint_path)
         logger.info(
-            "Saved predictor %s (%.2f MB)",
+            "Saved predictor %s from %s (%s, val_loss=%s; %.2f MB)",
             artifact_rel_to_experiment(predictor_checkpoint_path, self.root_dir),
+            artifact_rel_to_experiment(source_path, self.root_dir),
+            checkpoint.get("checkpoint_variant", "unknown"),
+            self._format_selection_metric(checkpoint),
             predictor_checkpoint_path.stat().st_size / (1024 * 1024),
         )
+
+    def _save_classification_checkpoint(
+        self,
+        filename: str,
+        *,
+        variant: str,
+        val_loss: float,
+    ) -> None:
+        self._save_checkpoint(
+            filename,
+            extra_fields=self._checkpoint_selection_fields(
+                variant=variant,
+                val_loss=val_loss,
+            ),
+        )
+
+    def _save_ema_classification_checkpoint(
+        self,
+        filename: str,
+        *,
+        val_loss: float,
+    ) -> None:
+        if self.ema is None:
+            raise RuntimeError("EMA checkpoint requested but EMA is disabled")
+        self._save_checkpoint(
+            filename,
+            model_state_dict=self.ema.model_state_dict(self.model),
+            include_training_model_state_dict=True,
+            extra_fields=self._checkpoint_selection_fields(
+                variant="ema",
+                val_loss=val_loss,
+            ),
+        )
+
+    @staticmethod
+    def _checkpoint_selection_fields(*, variant: str, val_loss: float) -> dict:
+        return {
+            "checkpoint_variant": variant,
+            "selection_metric": {
+                "name": "val_loss",
+                "value": float(val_loss),
+            },
+        }
+
+    def _select_predictor_source_checkpoint(
+        self, candidates: list[Path]
+    ) -> tuple[Path, dict]:
+        loaded = [
+            (
+                path,
+                torch.load(str(path), map_location=DEVICE, weights_only=False),
+            )
+            for path in candidates
+        ]
+        if len(loaded) == 1:
+            return loaded[0]
+
+        metric_values = [
+            self._selection_metric_value(checkpoint) for _, checkpoint in loaded
+        ]
+        if any(value is None for value in metric_values):
+            best_path = self.checkpoints_dir / "best.pth"
+            for path, checkpoint in loaded:
+                if path == best_path:
+                    return path, checkpoint
+            return loaded[0]
+
+        return min(
+            loaded,
+            key=lambda item: self._selection_metric_value(item[1]) or float("inf"),
+        )
+
+    @staticmethod
+    def _selection_metric_value(checkpoint: dict) -> float | None:
+        metric = checkpoint.get("selection_metric")
+        if not isinstance(metric, dict) or metric.get("name") != "val_loss":
+            return None
+        return float(metric["value"])
+
+    @classmethod
+    def _format_selection_metric(cls, checkpoint: dict) -> str:
+        value = cls._selection_metric_value(checkpoint)
+        if value is None:
+            return "unknown"
+        return f"{value:.4f}"
 
     def _create_checkpoint_task_specific(self) -> dict:
         return {

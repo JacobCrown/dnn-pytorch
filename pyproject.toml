@@ -26,6 +26,9 @@ dependencies = [
   "pywikibot>=10.7.0",
   "cairosvg>=2.8.2",
   "torchmetrics>=1.8.2",
+  "onnx>=1.20.1",
+  "onnxruntime>=1.23.2",
+  "optuna>=4.8.0",
   "rich>=15.0.0",
 ]
 
