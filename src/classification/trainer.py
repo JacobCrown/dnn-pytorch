@@ -152,6 +152,38 @@ class ClassificationTrainer(
             cfg=cfg.train,
             test_loader=test_loader,
         )
+        self._verify_train_batch_spatial_matches_model_config()
+
+    def _verify_train_batch_spatial_matches_model_config(self) -> None:
+        """Ensure one train batch tensor H×W matches ``model.height`` / ``model.width``.
+
+        Misaligned ``Resize`` in preprocessing vs YAML run naming fields fail fast before epochs.
+        """
+        exp_h = self.cfg.model.height
+        exp_w = self.cfg.model.width
+        try:
+            batch, _ = next(iter(self.train_loader))
+        except StopIteration as exc:
+            raise ValueError(
+                "Cannot validate spatial dimensions: train DataLoader yielded no batches "
+                "(empty dataset or batch size)."
+            ) from exc
+        if batch.dim() != 4:
+            raise ValueError(
+                f"Expected batched tensors (N,C,H,W), got shape {tuple(batch.shape)}"
+            )
+        _, _, h, w = batch.shape
+        if (h, w) != (exp_h, exp_w):
+            raise ValueError(
+                f"After preprocessing, tensors are {h}x{w}, "
+                f"but model.height={exp_h} and model.width={exp_w}. "
+                "Align ``Resize`` in ``model.preprocessing`` with ``model.height`` / ``model.width``."
+            )
+        logger.info(
+            "Train batch spatial size %dx%d matches model.height / model.width.",
+            exp_h,
+            exp_w,
+        )
 
     # ================================ Overridden Abstract Methods ================================
 
