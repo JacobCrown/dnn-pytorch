@@ -1,6 +1,6 @@
 """
-This file is supposed to be used to predict the class of an image. It should work on it's own, without using
-any other files from the project.
+Standalone inference: loads timm classification weights and the training preprocessing
+pipeline serialized in the checkpoint (`model_config.preprocessing`).
 """
 
 from pathlib import Path
@@ -11,7 +11,9 @@ import timm
 import torch
 import torch.nn as nn
 from PIL.Image import Image
-from timm.data.config import resolve_data_config
+
+from src.common.augmentations import get_augmentations
+from src.common.config import AugmentationConfig
 
 
 class ClassificationPredictor:
@@ -44,40 +46,33 @@ class ClassificationPredictor:
         model.to(self.device)
         model.eval()
 
-        # preprocessing
-        data_config = resolve_data_config(
-            args={"in_chans": int(model_config["in_channels"])}, model=model
-        )
-        mean = data_config.get("mean")
-        std = data_config.get("std")
-        height = model_config["height"]
-        width = model_config["width"]
-        preprocessing = A.Compose(
-            [
-                A.Resize(height, width),
-                A.Normalize(mean=mean, std=std),
-                A.ToTensorV2(),
-            ]
+        raw = model_config.get("preprocessing")
+        if not raw:
+            raise ValueError(
+                "Checkpoint model_config must contain a non-empty preprocessing list "
+                "(same YAML list used for training augmentation pipeline)."
+            )
+        preprocessing = get_augmentations(
+            [AugmentationConfig.from_dict(a) for a in raw],
         )
 
         return model, preprocessing, checkpoint["class_names"]
 
-    def _preprocess(self, input: Image | np.ndarray) -> torch.Tensor:
-        return self.preprocessing(image=input)["image"].unsqueeze(0).to(self.device)
+    def _preprocess(self, image: Image | np.ndarray) -> torch.Tensor:
+        return self.preprocessing(image=image)["image"].unsqueeze(0).to(self.device)
 
-    def _predict(self, input: torch.Tensor) -> torch.Tensor:
+    def _predict(self, batch: torch.Tensor) -> torch.Tensor:
         with torch.inference_mode():
-            return self.model(input).argmax(dim=1, keepdim=True)
+            return self.model(batch).argmax(dim=1, keepdim=True)
 
-    def _postprocess(self, input: torch.Tensor) -> torch.Tensor:
-        return input
+    def _postprocess(self, out: torch.Tensor) -> torch.Tensor:
+        return out
 
-    def predict(self, input: Image | np.ndarray) -> torch.Tensor:
-        preprocess = self._preprocess(input)
-        result = self._predict(preprocess)
-        postprocess = self._postprocess(result)
-        return postprocess
+    def predict(self, image: Image | np.ndarray) -> torch.Tensor:
+        pre = self._preprocess(image)
+        result = self._predict(pre)
+        return self._postprocess(result)
 
-    def predict_class(self, input: Image | np.ndarray) -> str:
-        prediction = self.predict(input)
+    def predict_class(self, image: Image | np.ndarray) -> str:
+        prediction = self.predict(image)
         return self.class_names[int(prediction.item())]
