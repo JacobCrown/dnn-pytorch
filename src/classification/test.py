@@ -1,9 +1,11 @@
 """Test-time evaluation entrypoint for image classification."""
 
+import logging
 from pathlib import Path
 
 import hydra
 import torch
+from hydra.core.hydra_config import HydraConfig
 from hydra.utils import to_absolute_path
 from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
@@ -15,11 +17,14 @@ from src.classification.model_manager import ClassificationModelManager
 from src.classification.trainer import evaluate_classification_model
 from src.classification.visualizer import ClassificationVisualizer
 from src.common.augmentations import get_augmentations
-from src.common.logging import setup_logging
+from src.common.hydra_resolvers import register_hydra_resolvers
+from src.common.logging import configure_run_logging
 from src.common.losses import get_loss_function
 from src.common.utils import DEVICE, set_seed
 
-logger = setup_logging(__file__)
+register_hydra_resolvers()
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_checkpoint_path(checkpoint_path: str) -> Path:
@@ -88,12 +93,19 @@ def _create_test_loader(
 def _log_test_dataset_summary(test_dataset: ClassificationDataset) -> None:
     logger.info("Test dataset ready.")
     logger.info("\tTest samples: %d", len(test_dataset))
-    logger.info("Final class names: %s", test_dataset.get_class_names())
+    names = test_dataset.get_class_names()
+    logger.info(
+        "Final class names: %d classes (see log file for full list)", len(names)
+    )
+    logger.debug("Final class names: %s", names)
 
     data_distribution = test_dataset.get_data_distribution()
-    logger.info("Test data distribution:")
+    logger.info(
+        "Test data distribution (%d classes; per-class detail at DEBUG)",
+        len(data_distribution),
+    )
     for data_dist in data_distribution:
-        logger.info(
+        logger.debug(
             "\t%s: %d (%.2f%%)",
             data_dist.class_name,
             data_dist.count,
@@ -109,7 +121,7 @@ def _log_model_summary(model_manager: ClassificationModelManager) -> None:
         "Model parameters: %d",
         sum(param.numel() for param in model.parameters()),
     )
-    logger.info(
+    logger.debug(
         "Model summary:\n%s",
         summary(
             model,
@@ -154,6 +166,13 @@ def _run_test_visualizations(
     config_name="test.yaml",
 )
 def main(cfg: dict) -> None:
+    experiment_dir = Path(HydraConfig.get().runtime.output_dir).resolve()
+    run_log_path = configure_run_logging(
+        experiment_directory=experiment_dir,
+        use_rich_console=True,
+        quiet_third_party_loggers=True,
+    )
+    logger.info("Full run log (all levels): %s", run_log_path)
     config = ClassificationTestConfig.from_dict(dict(cfg))
     logger.info("Resolved configuration:\n%s", OmegaConf.to_yaml(cfg, resolve=True))
 
@@ -174,7 +193,7 @@ def main(cfg: dict) -> None:
     _log_model_summary(model_manager)
 
     data_preproc = get_augmentations(config.model.preprocessing)
-    logger.info("Test preprocessing from config: %s", data_preproc)
+    logger.debug("Test preprocessing from config: %s", data_preproc)
 
     test_dataset = _build_test_dataset(
         config,

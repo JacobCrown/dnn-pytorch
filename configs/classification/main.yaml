@@ -6,3 +6,8 @@ defaults:
   - train: default
   - data: default
   - model: default
+  - override hydra/job_logging: stdout
+
+hydra:
+  run:
+    dir: ${train.root_dir}/classification/${basename:${data.root}}/${model.name}_${model.height}x${model.width}_${train.epochs}epochs_${train.batch_size}bs

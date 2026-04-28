@@ -60,10 +60,10 @@ def build_classification_data_pipeline(
 
     train_augs = get_augmentations(config.augmentations)
     train_transforms = A.Compose(train_augs.transforms + data_preproc.transforms)
-    logger.info("Train transforms: %s", train_transforms)
+    logger.debug("Train transforms: %s", train_transforms)
 
     eval_transforms = A.Compose(data_preproc.transforms)
-    logger.info("Eval transforms: %s", eval_transforms)
+    logger.debug("Eval transforms: %s", eval_transforms)
 
     data_config = config.data
     train_dataset = ClassificationDataset(
@@ -134,16 +134,22 @@ def log_data_pipeline_summary(
         source_class_count,
         derived_num_classes,
     )
-    logger.info("Final class names: %s", train_class_names)
+    logger.info(
+        "Final class names: %d classes (full list at DEBUG)", len(train_class_names)
+    )
+    logger.debug("Final class names: %s", train_class_names)
 
     if data_config.class_mapping:
         for mapping in data_config.class_mapping:
-            logger.info("Mapped %s -> %s", mapping.map_classes, mapping.name)
+            logger.debug("Mapped %s -> %s", mapping.map_classes, mapping.name)
 
     data_distribution = train_dataset.get_data_distribution()
-    logger.info("Data distribution:")
+    logger.info(
+        "Data distribution: %d classes (per-class counts at DEBUG)",
+        len(data_distribution),
+    )
     for data_dist in data_distribution:
-        logger.info(
+        logger.debug(
             "\t%s: %d (%.2f%%)",
             data_dist.class_name,
             data_dist.count,
@@ -178,7 +184,7 @@ def log_model_summary(
         "Trainable parameters: %d",
         sum(p.numel() for p in model_manager.get_trainable_parameters()),
     )
-    logger.info(
+    logger.debug(
         "Model summary:\n%s",
         summary(
             model,

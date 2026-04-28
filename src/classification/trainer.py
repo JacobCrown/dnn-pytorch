@@ -11,13 +11,17 @@ import torch.optim as optim
 from sklearn.metrics import classification_report, confusion_matrix
 from torch.amp import autocast  # type: ignore[reportMissingImports]
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 
 from src.classification.config import ClassificationConfig
 from src.classification.metrics import ClassificationMetrics
 from src.classification.model_manager import ClassificationModelManager
 from src.classification.visualizer import ClassificationVisualizer
-from src.common.logging import log_gpu_memory
+from src.common.experiment_paths import classification_experiment_root
+from src.common.logging import (
+    artifact_rel_to_experiment,
+    gpu_epoch_log_suffix,
+)
+from src.common.progress_tools import iterate_with_progress
 from src.common.utils import DEVICE
 from src.core.trainer import BaseTrainer
 
@@ -56,7 +60,11 @@ def evaluate_classification_model(
     labels = list(range(len(class_names)))
 
     with torch.inference_mode():
-        for data, target in tqdm(data_loader, desc=f"Evaluating {split_name.lower()}"):
+        for data, target in iterate_with_progress(
+            data_loader,
+            description=f"Eval · {split_name}",
+            transient=True,
+        ):
             data, target = data.to(DEVICE), target.to(DEVICE)
 
             with autocast(device_type=DEVICE, enabled=use_amp):
@@ -86,14 +94,18 @@ def evaluate_classification_model(
         zero_division=0,
     )
 
-    logger.info("%s Results:", split_name)
-    logger.info("  Loss: %.4f", avg_loss)
-    logger.info("  Accuracy: %.2f%%", accuracy)
-    logger.info("  Correct: %d/%d", int(correct.item()), total_count)
-    logger.info("%s Confusion Matrix Summary:", split_name)
-    logger.info("  Shape: %s", cm.shape)
-    logger.info("  Diagonal sum: %d/%d", int(cm.trace()), int(cm.sum()))
-    logger.info("%s Classification Report:\n%s", split_name, report)
+    logger.info(
+        "%s | loss=%.4f acc=%.2f%% correct=%d/%d | cm(shape=%s diagonal=%d/%d)",
+        split_name,
+        avg_loss,
+        accuracy,
+        int(correct.item()),
+        total_count,
+        cm.shape,
+        int(cm.trace()),
+        int(cm.sum()),
+    )
+    logger.debug("%s classification report:\n%s", split_name, report)
 
     return ClassificationEvaluationSummary(
         loss=avg_loss,
@@ -189,18 +201,14 @@ class ClassificationTrainer(
 
     def _get_root_dir_path(self) -> Path:
         """Get the path of the root directory."""
-        model = self.cfg.model.name
-        height = self.cfg.model.height
-        width = self.cfg.model.width
-        epochs = self.cfg.train.epochs
-        bs = self.cfg.train.batch_size
-        dataset_path = Path(self.cfg.data.root)
-        dataset_name = dataset_path.name
-        return (
-            Path(self.cfg.train.root_dir)
-            / "classification"
-            / dataset_name
-            / f"{model}_{height}x{width}_{epochs}epochs_{bs}bs"
+        return classification_experiment_root(
+            train_root_dir=self.cfg.train.root_dir,
+            data_root=self.cfg.data.root,
+            model_name=self.cfg.model.name,
+            height=self.cfg.model.height,
+            width=self.cfg.model.width,
+            epochs=self.cfg.train.epochs,
+            batch_size=self.cfg.train.batch_size,
         )
 
     def _visualize_pre_train(self) -> None:
@@ -210,19 +218,16 @@ class ClassificationTrainer(
         - Example images (with and without augmentations)
         - Data distribution
         """
-        logger.info("=" * 50)
-        logger.info("GENERATING PRE-TRAIN VISUALIZATIONS")
-        logger.info("=" * 50)
+        logger.info("[viz] pre-train · example grids (with / without aug)")
 
         # Visualize example images
-        logger.info("\n1. Visualizing example images...")
         self.visualizer.visualize_example_images(
             data_loader=self.train_loader,
             num_samples_per_class=5,
         )
 
         # Visualize data distribution
-        logger.info("\n2. Visualizing data distribution...")
+        logger.info("[viz] pre-train · class histogram")
         self.visualizer.visualize_data_distribution(
             data_loader=self.train_loader,
         )
@@ -234,11 +239,7 @@ class ClassificationTrainer(
         - Model predictions
         - Training metrics (loss, accuracy, confusion matrix)
         """
-        logger.info("=" * 50)
-        logger.info("GENERATING POST-TRAIN VISUALIZATIONS")
-        logger.info("=" * 50)
-        # Visualize predictions (use test set if available, otherwise validation set)
-        logger.info("\n1. Visualizing predictions...")
+        logger.info("[viz] post-train · prediction panel")
         prediction_loader = (
             self.test_loader
             if self.test_loader is not None
@@ -254,7 +255,7 @@ class ClassificationTrainer(
         )
 
         # Visualize metrics
-        logger.info("\n2. Visualizing training metrics...")
+        logger.info("[viz] post-train · curves & confusion matrix")
         self.visualizer.visualize_metrics(
             metrics=self.metrics,
             data_loader=prediction_loader,
@@ -263,16 +264,17 @@ class ClassificationTrainer(
         )
 
         # Visualize per class metrics
-        logger.info("\n3. Visualizing per class metrics...")
+        logger.info("[viz] post-train · per-class accuracy")
         self.visualizer.visualize_per_class_metrics(
             data_loader=prediction_loader,
             model=self.model,
             use_amp=self.use_amp,
         )
 
-        logger.info("\n" + "=" * 50)
-        logger.info(f"All visualizations saved to: {self.visualize_dir}")
-        logger.info("=" * 50)
+        logger.info(
+            "[viz] outputs under %s",
+            artifact_rel_to_experiment(self.visualize_dir, self.root_dir),
+        )
 
     def _train_epoch(self) -> tuple[float, float]:
         """Train for one epoch.
@@ -286,9 +288,11 @@ class ClassificationTrainer(
         total = torch.tensor(0.0, device=DEVICE, dtype=torch.int64)
         trainable_parameters = self.model_manager.get_trainable_parameters()
 
-        pbar = tqdm(self.train_loader, desc=f"Epoch {self.current_epoch + 1}")
-
-        for _, (data, target) in enumerate(pbar):
+        for data, target in iterate_with_progress(
+            self.train_loader,
+            description=f"Epoch {self.current_epoch + 1}/{self.num_epochs} · train",
+            transient=True,
+        ):
             data, target = data.to(DEVICE), target.to(DEVICE)
 
             self.optimizer.zero_grad(set_to_none=True)
@@ -353,16 +357,27 @@ class ClassificationTrainer(
                     self.scheduler.step()
 
             # Logging
-            logger.info(f"Epoch {epoch + 1}/{self.num_epochs}:")
-            logger.info(f"  Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}%")
+            gpu = gpu_epoch_log_suffix()
             if self.val_loader is None:
                 logger.info(
-                    "  Val Loss: (skipped — no validation data), using train metrics for scheduling"
+                    "Epoch %d/%d | train loss=%.4f acc=%.2f%% | val skipped (schedule uses train)%s",
+                    epoch + 1,
+                    self.num_epochs,
+                    train_loss,
+                    train_acc,
+                    gpu,
                 )
             else:
-                logger.info(f"  Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%")
-
-            log_gpu_memory(logger)
+                logger.info(
+                    "Epoch %d/%d | train loss=%.4f acc=%.2f%% | val loss=%.4f acc=%.2f%%%s",
+                    epoch + 1,
+                    self.num_epochs,
+                    train_loss,
+                    train_acc,
+                    val_loss,
+                    val_acc,
+                    gpu,
+                )
 
             # Always save last checkpoint
             self._save_checkpoint("last.pth")
@@ -387,11 +402,8 @@ class ClassificationTrainer(
 
         # Evaluate on test set if provided
         if self.test_loader is not None:
-            logger.info("\n" + "=" * 50)
-            logger.info("FINAL TEST EVALUATION")
-            logger.info("=" * 50)
+            logger.info("Hold-out test set")
             self._evaluate(self.test_loader)
-            logger.info("=" * 50)
 
     def _validate(self) -> tuple[float, float]:
         """Validate the model.
@@ -408,7 +420,11 @@ class ClassificationTrainer(
         total = torch.tensor(0.0, device=DEVICE, dtype=torch.int64)
 
         with torch.inference_mode():
-            for data, target in tqdm(self.val_loader, desc="Validation"):
+            for data, target in iterate_with_progress(
+                self.val_loader,
+                description="Validation",
+                transient=True,
+            ):
                 data, target = data.to(DEVICE), target.to(DEVICE)
 
                 with autocast(device_type=DEVICE, enabled=self.use_amp):
@@ -444,7 +460,7 @@ class ClassificationTrainer(
         if not best_checkpoint_path.exists():
             logger.warning(
                 "Skipping predictor checkpoint export because %s does not exist",
-                best_checkpoint_path,
+                artifact_rel_to_experiment(best_checkpoint_path, self.root_dir),
             )
             return
 
@@ -455,8 +471,8 @@ class ClassificationTrainer(
         predictor_checkpoint_path = self.checkpoints_dir / filename
         torch.save(predictor_checkpoint, predictor_checkpoint_path)
         logger.info(
-            "Saved predictor checkpoint to %s (%.2f MB)",
-            predictor_checkpoint_path,
+            "Saved predictor %s (%.2f MB)",
+            artifact_rel_to_experiment(predictor_checkpoint_path, self.root_dir),
             predictor_checkpoint_path.stat().st_size / (1024 * 1024),
         )
 

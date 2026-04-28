@@ -11,7 +11,9 @@ from torchinfo import summary
 from src.common.augmentations import get_augmentations
 from src.common.data_utils import create_data_loaders
 from src.common.exceptions import DataLoaderException
-from src.common.logging import setup_logging
+from src.common.experiment_paths import segmentation_experiment_root
+from src.common.hydra_resolvers import register_hydra_resolvers
+from src.common.logging import configure_run_logging
 from src.common.losses import get_loss_function
 from src.common.optimizers import get_optimizer
 from src.common.schedulers import get_scheduler
@@ -21,8 +23,9 @@ from src.segmentation.dataset import SegmentationDataset
 from src.segmentation.model_manager import SegmentationModelManager
 from src.segmentation.trainer import SegmentationTrainer
 
-# Note: real log file will be set inside main() after Hydra changes cwd
-logger = setup_logging(__file__)
+register_hydra_resolvers()
+
+logger = logging.getLogger(__name__)
 
 
 @hydra.main(
@@ -31,11 +34,19 @@ logger = setup_logging(__file__)
     config_name="main.yaml",
 )
 def main(cfg: dict) -> None:
-    # ---------------------------------------------------------------------
-    # Load config
-    # ---------------------------------------------------------------------
     config = SegmentationConfig.from_dict(dict(cfg))
-    logging.info("Resolved configuration:\n%s", OmegaConf.to_yaml(cfg, resolve=True))
+    experiment_dir = segmentation_experiment_root(
+        train_root_dir=config.train.root_dir,
+        data_root=config.data.root,
+        architecture=config.model.architecture,
+        encoder_name=config.model.encoder_name,
+        height=config.model.height,
+        width=config.model.width,
+        epochs=config.train.epochs,
+        batch_size=config.train.batch_size,
+    ).resolve()
+    configure_run_logging(experiment_directory=experiment_dir)
+    logger.info("Resolved configuration:\n%s", OmegaConf.to_yaml(cfg, resolve=True))
 
     # ---------------------------------------------------------------------
     # Seed & device
@@ -50,7 +61,7 @@ def main(cfg: dict) -> None:
     model = segmentation_model_manager.model
     data_preproc = segmentation_model_manager.preprocessing
 
-    logger.info(
+    logger.debug(
         "Model summary:\n%s",
         summary(
             model,
@@ -73,10 +84,10 @@ def main(cfg: dict) -> None:
     train_augs = get_augmentations(config.augmentations)
 
     train_transforms = A.Compose(train_augs.transforms + data_preproc.transforms)
-    logger.info("Train transforms: %s", train_transforms)
+    logger.debug("Train transforms: %s", train_transforms)
 
     val_transforms = A.Compose(data_preproc.transforms)
-    logger.info("Val transforms: %s", val_transforms)
+    logger.debug("Val transforms: %s", val_transforms)
 
     # ---------------------------------------------------------------------
     # Datasets & loaders
@@ -129,9 +140,11 @@ def main(cfg: dict) -> None:
         logger.warning("No test loader found, skipping final evaluation")
 
     data_distribution = train_dataset.get_data_distribution()
-    logger.info("Data distribution:")
+    logger.info(
+        "Data distribution (%d classes; detail at DEBUG)", len(data_distribution)
+    )
     for data_dist in data_distribution:
-        logger.info(
+        logger.debug(
             "\t%s: %.2f%% of pixels",
             data_dist.class_name,
             data_dist.percentage,
@@ -199,13 +212,13 @@ def main(cfg: dict) -> None:
 
 
 if __name__ == "__main__":
-    import cProfile
-    import pstats
+    # import cProfile
+    # import pstats
 
-    pr = cProfile.Profile()
-    pr.enable()
+    # pr = cProfile.Profile()
+    # pr.enable()
     main()
-    pr.disable()
-    stats = pstats.Stats(pr).sort_stats("cumtime")  # Sort po kumulatywnym czasie
-    stats.print_stats(20)  # Top 20 funkcji
-    stats.dump_stats("profile.prof")
+    # pr.disable()
+    # stats = pstats.Stats(pr).sort_stats("tottime")  # Sort po kumulatywnym czasie
+    # stats.print_stats(20)  # Top 20 funkcji
+    # stats.dump_stats("profile.prof")

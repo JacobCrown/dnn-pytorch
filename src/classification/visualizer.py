@@ -13,9 +13,10 @@ import torch.nn as nn
 from sklearn.metrics import confusion_matrix
 from torch.amp import autocast  # type: ignore[reportMissingImports]
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 
 from src.classification.dataset import ClassificationDataset
+from src.common.logging import artifact_rel_to_experiment
+from src.common.progress_tools import iterate_with_progress
 from src.common.utils import DEVICE
 from src.core.metrics import BaseMetrics
 from src.core.visualizer import BaseVisualizer
@@ -37,6 +38,10 @@ class ClassificationVisualizer(BaseVisualizer):
         """
         super().__init__(save_dir)
         self._setup_plot_style()
+
+    def _artifact_rel(self, file_path: Path | str) -> str:
+        """Experiment-relative path for logs (cwd is experiment folder under Hydra)."""
+        return artifact_rel_to_experiment(file_path, self.save_dir.parent)
 
     def _setup_plot_style(self) -> None:
         """Setup consistent plotting style."""
@@ -245,7 +250,10 @@ class ClassificationVisualizer(BaseVisualizer):
             self.save_dir / "example_images_with_aug.png",
         )
 
-        logger.info(f"Example images saved to {self.save_dir}")
+        logger.info(
+            "[viz] wrote example_images_no_aug.png + example_images_with_aug.png (%s)",
+            self._artifact_rel(self.save_dir),
+        )
 
     def _validate_dataset(self, data_loader: DataLoader) -> ClassificationDataset:
         """Validate that the dataset is a ClassificationDataset.
@@ -316,7 +324,7 @@ class ClassificationVisualizer(BaseVisualizer):
         save_path = self.save_dir / "data_distribution.png"
         plt.savefig(save_path)
         plt.close()
-        logger.info(f"Data distribution plot saved to {save_path}")
+        logger.info("[viz] wrote %s", self._artifact_rel(save_path))
 
     def _get_predictions(
         self,
@@ -347,7 +355,11 @@ class ClassificationVisualizer(BaseVisualizer):
         model.eval()
 
         with torch.inference_mode():
-            for data, target in tqdm(data_loader, desc="Collecting predictions"):
+            for data, target in iterate_with_progress(
+                data_loader,
+                description="Collect predictions",
+                transient=True,
+            ):
                 data, target = data.to(DEVICE), target.to(DEVICE)
 
                 with autocast(device_type=DEVICE, enabled=use_amp):
@@ -509,7 +521,7 @@ class ClassificationVisualizer(BaseVisualizer):
         save_path = self.save_dir / "predictions.png"
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
-        logger.info(f"Predictions visualization saved to {save_path}")
+        logger.info("[viz] wrote %s", self._artifact_rel(save_path))
 
     def visualize_metrics(
         self,
@@ -552,9 +564,11 @@ class ClassificationVisualizer(BaseVisualizer):
                     "Skipping confusion matrix - dataset is not ClassificationDataset"
                 )
         else:
-            logger.info("Skipping confusion matrix (requires data_loader and model)")
+            logger.debug(
+                "[viz] skipping confusion matrix (no data_loader or model on this plot pass)"
+            )
 
-        logger.info(f"All metrics visualizations saved to {self.save_dir}")
+        logger.debug("[viz] metrics plots under %s", self._artifact_rel(self.save_dir))
 
     def visualize_per_class_metrics(
         self,
@@ -611,7 +625,11 @@ class ClassificationVisualizer(BaseVisualizer):
         all_targets: list[int] = []
 
         with torch.inference_mode():
-            for data, target in tqdm(data_loader, desc="Evaluating"):
+            for data, target in iterate_with_progress(
+                data_loader,
+                description="Eval · per-class",
+                transient=True,
+            ):
                 data, target = data.to(DEVICE), target.to(DEVICE)
 
                 with autocast(device_type=DEVICE, enabled=use_amp):
@@ -696,7 +714,7 @@ class ClassificationVisualizer(BaseVisualizer):
         save_path = self.save_dir / "per_class_accuracy.png"
         plt.savefig(save_path)
         plt.close()
-        logger.info(f"Per-class accuracy plot saved to {save_path}")
+        logger.info("[viz] wrote %s", self._artifact_rel(save_path))
 
     def _plot_loss_curves(
         self, metrics: BaseMetrics, figsize: tuple[float, float]
@@ -813,4 +831,4 @@ class ClassificationVisualizer(BaseVisualizer):
         plt.savefig(save_path_png)
         plt.close()
 
-        logger.info(f"Confusion matrix saved to {save_path_png}")
+        logger.info("[viz] wrote %s", self._artifact_rel(save_path_png))

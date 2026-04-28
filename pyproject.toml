@@ -26,6 +26,7 @@ dependencies = [
   "pywikibot>=10.7.0",
   "cairosvg>=2.8.2",
   "torchmetrics>=1.8.2",
+  "rich>=15.0.0",
 ]
 
 [tool.uv.sources]
