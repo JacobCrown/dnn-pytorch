@@ -7,6 +7,7 @@ import albumentations as A
 import timm
 import torch
 import torch.nn as nn
+from torch.nn.modules.batchnorm import _BatchNorm
 
 from src.classification.config import ClassificationModelConfig
 from src.common.augmentations import AugmentationConfig, get_augmentations
@@ -21,7 +22,11 @@ class ClassificationModelManager(BaseModelManager[ClassificationModelConfig]):
 
     def __init__(self, cfg: ClassificationModelConfig):
         """Initialize the classification model."""
+        self.classifier_modules: tuple[nn.Module, ...] = ()
         super().__init__(cfg)
+        self._validate_freeze_config()
+        self.classifier_modules = self._resolve_classifier_modules()
+        self._apply_freeze_policy()
 
     def create_model(self) -> nn.Module:
         return timm.create_model(
@@ -37,10 +42,7 @@ class ClassificationModelManager(BaseModelManager[ClassificationModelConfig]):
 
     def load_preprocessing(self, preprocessing: dict) -> None:
         self.preprocessing = get_augmentations(
-            [
-                AugmentationConfig.from_dict(augmentation)
-                for augmentation in preprocessing
-            ]
+            [AugmentationConfig.from_dict(aug) for aug in preprocessing]
         )
 
     def get_model_state_dict(self) -> dict:
@@ -48,6 +50,7 @@ class ClassificationModelManager(BaseModelManager[ClassificationModelConfig]):
 
     def load_model_state_dict(self, state_dict: dict) -> None:
         self.model.load_state_dict(state_dict)
+        self._apply_freeze_policy()
 
     def check_model_config(self, config: dict) -> None:
         if config["name"] != self.model_cfg.name:
@@ -70,6 +73,22 @@ class ClassificationModelManager(BaseModelManager[ClassificationModelConfig]):
             raise ValueError(
                 f"Trained model config height ({config['height']}) does not match the current model config height ({self.model_cfg.height})"
             )
+        if config.get("freeze_backbone", False) != self.model_cfg.freeze_backbone:
+            raise ValueError(
+                "Trained model config freeze_backbone "
+                f"({config.get('freeze_backbone', False)}) does not match the current "
+                f"model config freeze_backbone ({self.model_cfg.freeze_backbone})"
+            )
+        if (
+            config.get("freeze_backbone_bn_eval", False)
+            != self.model_cfg.freeze_backbone_bn_eval
+        ):
+            raise ValueError(
+                "Trained model config freeze_backbone_bn_eval "
+                f"({config.get('freeze_backbone_bn_eval', False)}) does not match the current "
+                "model config freeze_backbone_bn_eval "
+                f"({self.model_cfg.freeze_backbone_bn_eval})"
+            )
         current_preprocessing = [
             augmentation.to_dict() for augmentation in self.model_cfg.preprocessing
         ]
@@ -77,6 +96,85 @@ class ClassificationModelManager(BaseModelManager[ClassificationModelConfig]):
             raise ValueError(
                 f"Trained model config preprocessing ({config['preprocessing']}) does not match the current model config preprocessing ({current_preprocessing})"
             )
+
+    def get_trainable_parameters(self) -> list[nn.Parameter]:
+        """Return parameters that should be optimized."""
+        return [param for param in self.model.parameters() if param.requires_grad]
+
+    def prepare_model_for_training(self) -> None:
+        """Restore train mode while keeping frozen backbone batch norms in eval."""
+        self.model.train()
+        if self.model_cfg.freeze_backbone_bn_eval:
+            self._set_backbone_batchnorm_eval()
+
+    def _validate_freeze_config(self) -> None:
+        if (
+            self.model_cfg.freeze_backbone_bn_eval
+            and not self.model_cfg.freeze_backbone
+        ):
+            raise ValueError(
+                "freeze_backbone_bn_eval requires freeze_backbone to be enabled"
+            )
+
+    def _resolve_classifier_modules(self) -> tuple[nn.Module, ...]:
+        classifier = self.model.get_classifier()
+        if isinstance(classifier, nn.Module):
+            classifier_modules = (classifier,)
+        elif isinstance(classifier, list | tuple):
+            classifier_modules = tuple(
+                module for module in classifier if isinstance(module, nn.Module)
+            )
+        else:
+            classifier_modules = ()
+
+        classifier_modules = tuple(
+            module
+            for module in classifier_modules
+            if not isinstance(module, nn.Identity)
+        )
+        if not classifier_modules:
+            raise ValueError(
+                f"Could not resolve a classifier head for model '{self.model_cfg.name}'"
+            )
+        return classifier_modules
+
+    def _apply_freeze_policy(self) -> None:
+        if not self.model_cfg.freeze_backbone:
+            return
+
+        for parameter in self.model.parameters():
+            parameter.requires_grad = False
+
+        for classifier_module in self.classifier_modules:
+            for parameter in classifier_module.parameters():
+                parameter.requires_grad = True
+
+        if not self.get_trainable_parameters():
+            raise ValueError(
+                f"No trainable classifier parameters found for model '{self.model_cfg.name}'"
+            )
+
+        if self.model_cfg.freeze_backbone_bn_eval:
+            self._set_backbone_batchnorm_eval()
+
+        logger.info(
+            "Applied freeze policy to model '%s' with %d trainable parameters",
+            self.model_cfg.name,
+            sum(param.numel() for param in self.get_trainable_parameters()),
+        )
+
+    def _set_backbone_batchnorm_eval(self) -> None:
+        classifier_module_ids = {
+            id(module)
+            for classifier_module in self.classifier_modules
+            for module in classifier_module.modules()
+        }
+        for module in self.model.modules():
+            if (
+                isinstance(module, _BatchNorm)
+                and id(module) not in classifier_module_ids
+            ):
+                module.eval()
 
     @classmethod
     def from_checkpoint_path(

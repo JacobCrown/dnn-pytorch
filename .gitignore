@@ -8,9 +8,15 @@ wheels/
 
 # Virtual environments
 .venv
-data/
+/data/
+test_generated_data/
 outputs/
 output/
 logs/
 plots/
 checkpoints/
+
+# Classification Hydra: track only composer + per-group defaults
+configs/classification/**
+!configs/classification/main.yaml
+!configs/classification/**/default.yaml

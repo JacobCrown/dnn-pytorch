@@ -1,3 +1,4 @@
+import logging
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -5,7 +6,10 @@ from pathlib import Path
 import albumentations as A
 import torch
 
+from src.classification.config import ClassificationClassMappingConfig
 from src.core.dataset import BaseDataset
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -42,7 +46,11 @@ class ClassificationDataset(BaseDataset):
         transforms: A.Compose,
         extensions: list[str],
         max_samples: int | None = None,
+        class_mapping: list[ClassificationClassMappingConfig] | None = None,
+        canonical_class_to_idx: dict[str, int] | None = None,
     ):
+        self.class_mapping = class_mapping
+        self.canonical_class_to_idx = canonical_class_to_idx
         super().__init__(
             data_root=data_root,
             transforms=transforms,
@@ -52,29 +60,78 @@ class ClassificationDataset(BaseDataset):
 
     def _build_samples(self) -> None:
         """Build the list of samples for classification."""
-        # Get class names (subdirectory names)
-        self.class_names = sorted(
+        source_class_names = sorted(
             [d.name for d in self.data_root.iterdir() if d.is_dir()]
         )
+        if self.canonical_class_to_idx is None:
+            self._build_samples_strict(source_class_names)
+        else:
+            self._build_samples_relaxed(source_class_names)
+
+    def _build_samples_strict(self, source_class_names: list[str]) -> None:
+        """Build samples from on-disk classes (typical for training; strict mapping)."""
+        self.class_names, source_to_target = _build_final_classes(
+            source_class_names, self.class_mapping
+        )
+        self._apply_class_indices()
+        for source_class_name in source_class_names:
+            target_class_name = source_to_target.get(
+                source_class_name, source_class_name
+            )
+            class_idx = self.class_to_idx[target_class_name]
+            self._append_class_samples(
+                class_dir_name=source_class_name,
+                class_idx=class_idx,
+            )
+
+    def _build_samples_relaxed(
+        self,
+        source_class_names: list[str],
+    ) -> None:
+        """Build samples for val/test using the same label space as training.
+
+        Folders in ``class_mapping`` that are missing in this split are ignored.
+        Folders on disk that are not part of the training label space are skipped
+        with a warning.
+        """
+        assert self.canonical_class_to_idx is not None
+        self.class_names = _class_names_in_index_order(self.canonical_class_to_idx)
+        self.class_to_idx = dict(self.canonical_class_to_idx)
+        self.idx_to_class = {idx: name for name, idx in self.class_to_idx.items()}
+
+        source_set = set(source_class_names)
+        source_to_target = _source_to_target_for_split(source_set, self.class_mapping)
+        for source_class_name in source_class_names:
+            target_name = source_to_target.get(source_class_name, source_class_name)
+            if target_name not in self.class_to_idx:
+                logger.warning(
+                    "Skipping %s path: folder '%s' resolves to unknown class label '%s' "
+                    "(not in training label space)",
+                    self.data_root,
+                    source_class_name,
+                    target_name,
+                )
+                continue
+            self._append_class_samples(
+                class_dir_name=source_class_name,
+                class_idx=self.class_to_idx[target_name],
+            )
+
+    def _apply_class_indices(self) -> None:
         self.class_to_idx = {
-            cls_name: idx for idx, cls_name in enumerate(self.class_names)
+            class_name: idx for idx, class_name in enumerate(self.class_names)
         }
-        self.idx_to_class = {
-            class_name: idx for idx, class_name in self.class_to_idx.items()
-        }
+        self.idx_to_class = {idx: name for name, idx in self.class_to_idx.items()}
 
-        # Build file paths and labels
-        for class_name in self.class_names:
-            class_samples = 0
-            class_dir = self.data_root / class_name
-            class_idx = self.class_to_idx[class_name]
-
-            for file_path in class_dir.iterdir():
-                if file_path.suffix.lower() in self.extensions:
-                    self.samples.append((str(file_path), class_idx))
-                    class_samples += 1
-                    if self.max_samples and class_samples >= self.max_samples:
-                        break
+    def _append_class_samples(self, class_dir_name: str, class_idx: int) -> None:
+        class_samples = 0
+        class_dir = self.data_root / class_dir_name
+        for file_path in sorted(class_dir.iterdir()):
+            if file_path.suffix.lower() in self.extensions:
+                self.samples.append((str(file_path), class_idx))
+                class_samples += 1
+                if self.max_samples and class_samples >= self.max_samples:
+                    break
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
         """Get a sample from the dataset.
@@ -121,3 +178,110 @@ class ClassificationDataset(BaseDataset):
             )
             for idx, class_name in enumerate(self.class_names)
         ]
+
+
+def _class_names_in_index_order(class_to_idx: dict[str, int]) -> list[str]:
+    return [name for name, _ in sorted(class_to_idx.items(), key=lambda x: x[1])]
+
+
+def _source_to_target_for_split(
+    source_names_present: set[str],
+    class_mapping: list[ClassificationClassMappingConfig] | None,
+) -> dict[str, str]:
+    """Apply ``class_mapping`` only for source folders that exist in this split."""
+    if not class_mapping:
+        return {}
+
+    result: dict[str, str] = {}
+    for mapping in class_mapping:
+        if not mapping.map_classes:
+            raise ValueError(
+                f"class_mapping[{mapping.name}]: map_classes cannot be empty"
+            )
+        for source_name in mapping.map_classes:
+            if source_name not in source_names_present:
+                logger.debug(
+                    "No folder %r for merge into %r in this split; skipping that source",
+                    source_name,
+                    mapping.name,
+                )
+                continue
+            if source_name in result:
+                raise ValueError(
+                    f"Source class '{source_name}' mapped multiple times: "
+                    f"to '{result[source_name]}' and to '{mapping.name}'"
+                )
+            result[source_name] = mapping.name
+    return result
+
+
+def _validate_class_mapping(
+    source_class_names: list[str],
+    class_mapping: list[ClassificationClassMappingConfig] | None,
+) -> tuple[dict[str, str], list[str]]:
+    if not class_mapping:
+        return {}, []
+
+    source_class_set = set(source_class_names)
+    source_to_target: dict[str, str] = {}
+    target_names: list[str] = []
+
+    for mapping in class_mapping:
+        if not mapping.map_classes:
+            raise ValueError(
+                f"class_mapping[{mapping.name}]: map_classes cannot be empty"
+            )
+        if mapping.name in target_names:
+            raise ValueError(
+                f"Duplicate target name in class_mapping: '{mapping.name}'"
+            )
+        target_names.append(mapping.name)
+
+        for source_name in mapping.map_classes:
+            if source_name not in source_class_set:
+                raise ValueError(
+                    f"class_mapping[{mapping.name}]: source class '{source_name}' not found"
+                )
+            if source_name in source_to_target:
+                raise ValueError(
+                    f"Source class '{source_name}' mapped multiple times: "
+                    f"to '{source_to_target[source_name]}' and to '{mapping.name}'"
+                )
+            source_to_target[source_name] = mapping.name
+
+    for target_name in target_names:
+        if target_name in source_to_target:
+            mapped_to = source_to_target[target_name]
+            if mapped_to != target_name:
+                raise ValueError(
+                    f"class_mapping target '{target_name}' is also a source folder "
+                    f"mapped to '{mapped_to}'; a label cannot be a merge target in one "
+                    f"group and a remapped source folder in another. "
+                    f"Listing '{target_name}' in map_classes together with other aliases "
+                    f"({target_name} -> {target_name}) is allowed."
+                )
+
+    return source_to_target, target_names
+
+
+def _build_final_classes(
+    source_class_names: list[str],
+    class_mapping: list[ClassificationClassMappingConfig] | None,
+) -> tuple[list[str], dict[str, str]]:
+    source_to_target, target_names = _validate_class_mapping(
+        source_class_names, class_mapping
+    )
+    mapped_sources = set(source_to_target)
+
+    final_class_names = [
+        class_name
+        for class_name in source_class_names
+        if class_name not in mapped_sources
+    ]
+    final_class_names.extend(
+        target_name
+        for target_name in target_names
+        if target_name not in final_class_names
+    )
+
+    return final_class_names, source_to_target

@@ -1,11 +1,14 @@
 """Trainer for classification models."""
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from sklearn.metrics import classification_report, confusion_matrix
 from torch.amp import autocast  # type: ignore[reportMissingImports]
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -19,6 +22,100 @@ from src.common.utils import DEVICE
 from src.core.trainer import BaseTrainer
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ClassificationEvaluationSummary:
+    loss: float
+    accuracy: float
+    correct: int
+    total: int
+    predictions: list[int]
+    targets: list[int]
+    confusion_matrix: np.ndarray
+    classification_report: str
+
+
+def evaluate_classification_model(
+    model: nn.Module,
+    data_loader: DataLoader,
+    criterion: nn.Module,
+    use_amp: bool,
+    class_names: list[str],
+    split_name: str = "Test",
+) -> ClassificationEvaluationSummary:
+    """Evaluate a classification model and log aggregate statistics."""
+    model = model.to(DEVICE)
+    model.eval()
+
+    total_loss = torch.tensor(0.0, device=DEVICE)
+    correct = torch.tensor(0.0, device=DEVICE, dtype=torch.int64)
+    total = torch.tensor(0.0, device=DEVICE, dtype=torch.int64)
+    predictions: list[int] = []
+    targets: list[int] = []
+    labels = list(range(len(class_names)))
+
+    with torch.inference_mode():
+        for data, target in tqdm(data_loader, desc=f"Evaluating {split_name.lower()}"):
+            data, target = data.to(DEVICE), target.to(DEVICE)
+
+            with autocast(device_type=DEVICE, enabled=use_amp):
+                output = model(data)
+                loss = criterion(output, target)
+
+            pred = output.argmax(dim=1)
+            correct += pred.eq(target).sum()
+            total += target.size(0)
+            total_loss += loss
+            predictions.extend(pred.cpu().tolist())
+            targets.extend(target.cpu().tolist())
+
+    total_count = int(total.item())
+    if total_count == 0:
+        raise ValueError(f"{split_name} data loader is empty; cannot compute metrics")
+
+    accuracy = 100.0 * (correct / total).item()
+    avg_loss = total_loss.item() / len(data_loader)
+    cm = confusion_matrix(targets, predictions, labels=labels)
+    report = classification_report(
+        targets,
+        predictions,
+        labels=labels,
+        target_names=class_names,
+        digits=4,
+        zero_division=0,
+    )
+
+    logger.info("%s Results:", split_name)
+    logger.info("  Loss: %.4f", avg_loss)
+    logger.info("  Accuracy: %.2f%%", accuracy)
+    logger.info("  Correct: %d/%d", int(correct.item()), total_count)
+    logger.info("%s Confusion Matrix Summary:", split_name)
+    logger.info("  Shape: %s", cm.shape)
+    logger.info("  Diagonal sum: %d/%d", int(cm.trace()), int(cm.sum()))
+    logger.info("%s Classification Report:\n%s", split_name, report)
+
+    return ClassificationEvaluationSummary(
+        loss=avg_loss,
+        accuracy=accuracy,
+        correct=int(correct.item()),
+        total=total_count,
+        predictions=predictions,
+        targets=targets,
+        confusion_matrix=cm,
+        classification_report=report,
+    )
+
+
+def build_predictor_checkpoint_payload(checkpoint: dict) -> dict:
+    """Keep only the fields required by ClassificationPredictor."""
+    required_keys = ("model_config", "model_state_dict", "class_names")
+    missing_keys = [key for key in required_keys if key not in checkpoint]
+    if missing_keys:
+        raise ValueError(
+            "Checkpoint is missing predictor fields: " + ", ".join(missing_keys)
+        )
+    return {key: checkpoint[key] for key in required_keys}
 
 
 class ClassificationTrainer(
@@ -38,7 +135,7 @@ class ClassificationTrainer(
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler._LRScheduler,
         train_loader: DataLoader,
-        val_loader: DataLoader,
+        val_loader: DataLoader | None,
         cfg: ClassificationConfig,
         test_loader: DataLoader | None = None,
     ):
@@ -111,7 +208,11 @@ class ClassificationTrainer(
         # Visualize predictions (use test set if available, otherwise validation set)
         logger.info("\n1. Visualizing predictions...")
         prediction_loader = (
-            self.test_loader if self.test_loader is not None else self.val_loader
+            self.test_loader
+            if self.test_loader is not None
+            else self.val_loader
+            if self.val_loader is not None
+            else self.train_loader
         )
         self.visualizer.visualize_predictions(
             data_loader=prediction_loader,
@@ -147,10 +248,11 @@ class ClassificationTrainer(
         Returns:
             Tuple of (average_loss, accuracy)
         """
-        self.model.train()
+        self.model_manager.prepare_model_for_training()
         total_loss = torch.tensor(0.0, device=DEVICE)
         correct = torch.tensor(0.0, device=DEVICE, dtype=torch.int64)
         total = torch.tensor(0.0, device=DEVICE, dtype=torch.int64)
+        trainable_parameters = self.model_manager.get_trainable_parameters()
 
         pbar = tqdm(self.train_loader, desc=f"Epoch {self.current_epoch + 1}")
 
@@ -170,17 +272,13 @@ class ClassificationTrainer(
                 self.scaler.scale(loss).backward()
                 if self.grad_clip is not None:
                     self.scaler.unscale_(self.optimizer)
-                    torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(), self.grad_clip
-                    )
+                    torch.nn.utils.clip_grad_norm_(trainable_parameters, self.grad_clip)
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
             else:
                 loss.backward()
                 if self.grad_clip is not None:
-                    torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(), self.grad_clip
-                    )
+                    torch.nn.utils.clip_grad_norm_(trainable_parameters, self.grad_clip)
                 self.optimizer.step()
 
             total_loss += loss
@@ -206,9 +304,14 @@ class ClassificationTrainer(
             self.metrics.accuracies["train"].append(train_acc)
 
             # Validation
-            val_loss, val_acc = self._validate()
-            self.metrics.losses["val"].append(val_loss)
-            self.metrics.accuracies["val"].append(val_acc)
+            if self.val_loader is None:
+                val_loss, val_acc = train_loss, train_acc
+                self.metrics.losses["val"].append(val_loss)
+                self.metrics.accuracies["val"].append(val_acc)
+            else:
+                val_loss, val_acc = self._validate()
+                self.metrics.losses["val"].append(val_loss)
+                self.metrics.accuracies["val"].append(val_acc)
 
             # Learning rate scheduling
             if self.scheduler is not None:
@@ -220,7 +323,12 @@ class ClassificationTrainer(
             # Logging
             logger.info(f"Epoch {epoch + 1}/{self.num_epochs}:")
             logger.info(f"  Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}%")
-            logger.info(f"  Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%")
+            if self.val_loader is None:
+                logger.info(
+                    "  Val Loss: (skipped — no validation data), using train metrics for scheduling"
+                )
+            else:
+                logger.info(f"  Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%")
 
             log_gpu_memory(logger)
 
@@ -243,6 +351,8 @@ class ClassificationTrainer(
                 logger.info(f"Early stopping triggered after {epoch + 1} epochs")
                 break
 
+        self._save_predictor_checkpoint()
+
         # Evaluate on test set if provided
         if self.test_loader is not None:
             logger.info("\n" + "=" * 50)
@@ -257,6 +367,9 @@ class ClassificationTrainer(
         Returns:
             Tuple of (average_loss, accuracy)
         """
+        if self.val_loader is None:
+            raise RuntimeError("Validation requested but val_loader is None")
+
         self.model.eval()
         total_loss = torch.tensor(0.0, device=DEVICE)
         correct = torch.tensor(0.0, device=DEVICE, dtype=torch.int64)
@@ -283,32 +396,37 @@ class ClassificationTrainer(
 
     def _evaluate(self, test_loader: DataLoader) -> None:
         """Evaluate the model on test data."""
-        self.model.eval()
-        total_loss = torch.tensor(0.0, device=DEVICE)
-        correct = torch.tensor(0.0, device=DEVICE, dtype=torch.int64)
-        total = torch.tensor(0.0, device=DEVICE, dtype=torch.int64)
+        summary = evaluate_classification_model(
+            model=self.model,
+            data_loader=test_loader,
+            criterion=self.criterion,
+            use_amp=self.use_amp,
+            class_names=self.class_names,
+            split_name="Test",
+        )
+        self.metrics.losses["test"].append(summary.loss)
+        self.metrics.accuracies["test"].append(summary.accuracy)
 
-        with torch.inference_mode():
-            for data, target in tqdm(test_loader, desc="Evaluating"):
-                data, target = data.to(DEVICE), target.to(DEVICE)
+    def _save_predictor_checkpoint(self, filename: str = "predictor.pth") -> None:
+        best_checkpoint_path = self.checkpoints_dir / "best.pth"
+        if not best_checkpoint_path.exists():
+            logger.warning(
+                "Skipping predictor checkpoint export because %s does not exist",
+                best_checkpoint_path,
+            )
+            return
 
-                with autocast(device_type=DEVICE, enabled=self.use_amp):
-                    output = self.model(data)
-                    loss = self.criterion(output, target)
-
-                pred = output.argmax(dim=1, keepdim=True)
-                correct += pred.eq(target.view_as(pred)).sum()
-                total += target.size(0)
-
-                total_loss += loss
-
-        accuracy = 100.0 * (correct / total).item()
-        avg_loss = total_loss.item() / len(test_loader)
-
-        logger.info("Test Results:")
-        logger.info(f"  Loss: {avg_loss:.4f}")
-        logger.info(f"  Accuracy: {accuracy:.2f}%")
-        logger.info(f"  Correct: {correct.item()}/{total.item()}")
+        checkpoint = torch.load(
+            str(best_checkpoint_path), map_location=DEVICE, weights_only=False
+        )
+        predictor_checkpoint = build_predictor_checkpoint_payload(checkpoint)
+        predictor_checkpoint_path = self.checkpoints_dir / filename
+        torch.save(predictor_checkpoint, predictor_checkpoint_path)
+        logger.info(
+            "Saved predictor checkpoint to %s (%.2f MB)",
+            predictor_checkpoint_path,
+            predictor_checkpoint_path.stat().st_size / (1024 * 1024),
+        )
 
     def _create_checkpoint_task_specific(self) -> dict:
         return {

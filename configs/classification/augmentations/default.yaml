@@ -7,15 +7,15 @@
 #   params:
 #     p: 0.5
 
-- name: Affine
-  params:
-    p: 0.5
-    translate_percent: [0.08, 0.08]
-    scale: [0.85, 1.15]
-    rotate: [-15, 15]
-    border_mode: 4
-    interpolation: 1
-    fill: 0
+# - name: Affine
+#   params:
+#     p: 0.5
+#     translate_percent: [0.08, 0.08]
+#     scale: [0.85, 1.15]
+#     rotate: [-15, 15]
+#     border_mode: 4
+#     interpolation: 1
+#     fill: 0
 
 # - name: Perspective
 #   params:
@@ -69,12 +69,12 @@
 # Dropout
 # - name: CoarseDropout
 #   params:
-#     p: 0.4
+#     p: 0.2
 
-- name: GridDropout
-  params:
-    p: 0.2
-    ratio: 0.5
+# - name: GridDropout
+#   params:
+#     p: 0.2
+#     ratio: 0.5
 
 # - name: MaskDropout
 #   params:
@@ -84,21 +84,22 @@
 #   params:
 #     p: 0.2
 
-# Pixel-level transforms
-- name: RandomBrightnessContrast
-  params:
-    p: 0.2
+# # Pixel-level transforms
+# - name: RandomBrightnessContrast
+#   params:
+#     p: 0.2
 
 # - name: RandomGamma
 #   params:
 #     gamma_limit: [80, 120]
 #     p: 0.5
 
-- name: HueSaturationValue
-  params:
-    p: 0.2
-    hue_shift_limit: 20
-    sat_shift_limit: 30
+# - name: HueSaturationValue
+#   params:
+#     p: 0.2
+#     hue_shift_limit: 5
+#     sat_shift_limit: 10
+#     val_shift_limit: 20
 
 # - name: RGBShift
 #   params:
@@ -107,9 +108,9 @@
 #     g_shift_limit: 20
 #     b_shift_limit: 20
 
-- name: ToGray
-  params:
-    p: 0.4
+# - name: ToGray
+#   params:
+#     p: 0.4
 
 # - name: ToSepia
 #   params:
@@ -134,10 +135,10 @@
 #     p: 0.5
 #     mode: 'cv'
 
-- name: CLAHE
-  params:
-    p: 0.2
-    clip_limit: 4.0
+# - name: CLAHE
+#   params:
+#     p: 0.2
+#     clip_limit: 4.0
 
 # # Blur transforms
 # - name: Blur
@@ -147,7 +148,7 @@
 
 # - name: GaussianBlur
 #   params:
-#     p: 0.5
+#     p: 0.3
 #     blur_limit: [3, 7]
 
 # - name: MedianBlur
@@ -181,11 +182,11 @@
 #   params:
 #     p: 0.3
 
-# Noise
-- name: GaussNoise
-  params:
-    p: 0.2
-    var_limit: [5.0, 10.0]
+# # Noise
+# - name: GaussNoise
+#   params:
+#     p: 0.2
+#     var_limit: [5.0, 10.0]
 
 # - name: ISONoise
 #   params:
@@ -223,19 +224,24 @@
 #     p: 0.5
 
 # Composition
-- name: OneOf
-  params:
-    p: 0.5
-    transforms:
-      - name: MotionBlur
-        params:
-          blur_limit: [3, 7]
-      - name: MedianBlur
-        params:
-          blur_limit: [3, 7]
-      - name: GaussianBlur
-        params:
-          blur_limit: [3, 7]
+# - name: OneOf
+#   params:
+#     p: 0.5
+#     transforms:
+#       - name: MotionBlur
+#         params:
+#           blur_limit: [3, 7]
+#       - name: MedianBlur
+#         params:
+#           blur_limit: [3, 7]
+#       - name: GaussianBlur
+#         params:
+#           blur_limit: [3, 7]
+
+# - name: ImageCompression
+#   params:
+#     p: 0.2
+#     quality_range: [20, 90]
 
 # Utility transforms
 # - name: Lambda

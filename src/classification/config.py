@@ -11,6 +11,21 @@ from src.common.config import (
 
 
 @dataclass
+class ClassificationClassMappingConfig(BaseConfig):
+    """Configuration describing how source folders merge into one class."""
+
+    name: str = "class_name"
+    map_classes: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ClassificationDataConfig(BaseDataConfig):
+    """Configuration for classification datasets."""
+
+    class_mapping: list[ClassificationClassMappingConfig] | None = None
+
+
+@dataclass
 class ClassificationModelConfig(BaseConfig):
     """Configuration for model architecture."""
 
@@ -19,6 +34,8 @@ class ClassificationModelConfig(BaseConfig):
     in_channels: int = 3
     pretrained: bool = True
     dropout: float = 0.2
+    freeze_backbone: bool = False
+    freeze_backbone_bn_eval: bool = False
     width: int = 224
     height: int = 224
     preprocessing: list[AugmentationConfig] = field(default_factory=list)
@@ -31,4 +48,14 @@ class ClassificationConfig(BaseConfig):
     model: ClassificationModelConfig = field(default_factory=ClassificationModelConfig)
     train: BaseTrainingConfig = field(default_factory=BaseTrainingConfig)
     augmentations: list[AugmentationConfig] = field(default_factory=list)
-    data: BaseDataConfig = field(default_factory=BaseDataConfig)
+    data: ClassificationDataConfig = field(default_factory=ClassificationDataConfig)
+
+
+@dataclass
+class ClassificationTestConfig(BaseConfig):
+    """Configuration class for classification test-time evaluation."""
+
+    model: ClassificationModelConfig = field(default_factory=ClassificationModelConfig)
+    train: BaseTrainingConfig = field(default_factory=BaseTrainingConfig)
+    data: ClassificationDataConfig = field(default_factory=ClassificationDataConfig)
+    eval_checkpoint: str | None = None

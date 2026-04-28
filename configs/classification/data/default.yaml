@@ -1,7 +1,25 @@
-root: "data/classification/polish-road-signs"
-train_dir: "train"
-val_dir: "test"
-test_dir: null
+root: "data/classification/"
+train_dir: "synthetic_roadsign_data"
+val_dir: "polish_dataset_train"
+test_dir: "polish_dataset_test"
 extensions: [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
 # For debugging purposes, optional
 max_samples: null
+
+# Merge multiple class folders (names must match subdirs under train/val/test) into one training label.
+# Set to null when not used.
+class_mapping: null
+# Example:
+# class_mapping:
+#   - name: Car
+#     map_classes:
+#       - Car 1
+#       - Car 2
+#       - Car 3
+#       - Car 4
+#   - name: Bicycle
+#     map_classes:
+#       - Bicycle 1
+#       - Bicycle 2
+#       - Bicycle 3
+#       - Bicycle 4
