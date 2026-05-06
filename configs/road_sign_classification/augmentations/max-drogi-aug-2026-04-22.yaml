@@ -1,0 +1,81 @@
+# 1. Blur (Optyka / Ruch)
+# p=1.0 (zawsze rozmywamy, żeby dopasować ostrość do tła)
+- name: RandomCropFromBorders
+  params:
+    crop_left: 0.1
+    crop_right: 0.1
+    crop_top: 0.1
+    crop_bottom: 0.1
+    p: 0.2
+
+- name: OneOf
+  params:
+    p: 0.5
+    transforms:
+      - name: GaussianBlur
+        params:
+          blur_limit: [5, 9]
+          sigma_limit: [1, 3]
+          p: 1.0
+      - name: MotionBlur
+        params:
+          allow_shifted: false
+          p: 1.0
+      - name: Defocus
+        params:
+          radius: [3, 9]
+          alias_blur: [0.1, 0.5]
+          p: 1.0
+
+# 2. Noise (Sensor / Ziarno)
+# p=1.0 (zawsze dodajemy szum, bo tło jest słabej jakości)
+- name: OneOf
+  params:
+    p: 0.5
+    transforms:
+      - name: GaussNoise
+        params:
+          std_range: [0.01, 0.05]
+          mean_range: [-0.01, 0.01]
+          p: 1.0
+
+# 3. Atmosfera (Fizyka)
+# p=0.2 (okazjonalnie mgła lub flara)
+- name: OneOf
+  params:
+    p: 0.1
+    transforms:
+      - name: RandomFog
+        params:
+          fog_coef_range: [0.1, 0.2]
+          alpha_coef: 0.2
+          p: 1.0
+      - name: RandomSunFlare
+        params:
+          flare_roi: [0, 0, 1, 1]
+          angle_range: [0, 1]
+          num_flare_circles_range: [5, 10]
+          src_radius: 30
+          src_color: [255, 255, 255]
+          method: "physics_based"
+          p: 1.0
+
+- name: Downscale
+  params:
+    scale_range: [0.2, 0.8]
+    p: 1.0
+
+# - name: LongestMaxSize
+#   params:
+#     max_size: 224
+#     p: 1.0
+#     interpolation: 3
+#     mask_interpolation: 2
+
+# - name: PadIfNeeded
+#   params:
+#     p: 1.0
+#     min_height: 224
+#     min_width: 224
+#     border_mode: 0
+#     fill: 0

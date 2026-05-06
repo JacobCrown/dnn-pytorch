@@ -1,0 +1,13 @@
+target_per_class: 50
+output_dir: "generated_data"
+incremental: true
+# When false, PNGs keep augment pipeline size; when true, also Resize to model width/height.
+resize_to_model: false
+num_workers: null
+chunk_size: 16
+template_cache_size: 100
+background_cache_size: 8
+png_compress_level: 1
+start_method: null
+backgrounds_dir: null
+background_sample_stride: 30

@@ -1,0 +1,53 @@
+# Tile-stage augmentations aligned with `task/best_aug_config.json` (Optuna struct search).
+# Source: metric mmd2_rbf_resnet18_imagenet, search_space_version struct-search-v1.
+# Stage B (paste/ROI) stays in code; this list is applied after composite (same as Hydra train augs).
+#
+# Structure from JSON (order): downscale → sunflare → fog → blur
+# Disabled in search (omitted here): RandomCropFromBorders, GaussNoise.
+# Bookend: LongestMaxSize 224 + PadIfNeeded (matches task/aug_pipelines tile stage).
+#
+# --- Previous preset (e.g. default.yaml / max-drogi-aug-2026-04-22.yaml) for reference ---
+# - RandomCropFromBorders + OneOf blur / OneOf noise / OneOf fog+flare / Downscale / resize+pad
+# --- end reference ---
+
+- name: Downscale
+  params:
+    scale_range: [0.12136098423008444, 0.8846269847445818]
+    p: 1.0
+
+- name: RandomSunFlare
+  params:
+    flare_roi: [0, 0, 1, 1]
+    angle_range: [0, 1]
+    num_flare_circles_range: [3, 16]
+    src_radius: 30
+    src_color: [255, 255, 255]
+    method: "physics_based"
+    p: 0.44861313351210697
+
+- name: RandomFog
+  params:
+    fog_coef_range: [0.1459423495703533, 0.3993448626915515]
+    alpha_coef: 0.16039904770258645
+    p: 0.44861313351210697
+
+- name: GaussianBlur
+  params:
+    blur_limit: [7, 9]
+    sigma_limit: [2, 3]
+    p: 0.6777035454763222
+
+- name: LongestMaxSize
+  params:
+    max_size: 224
+    p: 1.0
+    interpolation: 3
+    mask_interpolation: 2
+
+- name: PadIfNeeded
+  params:
+    p: 1.0
+    min_height: 224
+    min_width: 224
+    border_mode: 0
+    fill: 0

@@ -1,0 +1,92 @@
+# Default synthetic pipeline matches the most recent road sign setup.
+- name: RandomCropFromBorders
+  params:
+    crop_left: 0.20
+    crop_right: 0.20
+    crop_top: 0.20
+    crop_bottom: 0.20
+    p: 0.3
+
+- name: OneOf
+  params:
+    p: 1.0
+    transforms:
+      - name: GaussianBlur
+        params:
+          blur_limit: [5, 9]
+          sigma_limit: [1, 3]
+          p: 0.5
+
+- name: OneOf
+  params:
+    p: 1.0
+    transforms:
+      - name: GaussNoise
+        params:
+          std_range: [0.01, 0.05]
+          mean_range: [-0.01, 0.01]
+          p: 1.0
+
+- name: OneOf
+  params:
+    p: 0.5
+    transforms:
+      - name: RandomFog
+        params:
+          fog_coef_range: [0.1, 0.2]
+          alpha_coef: 0.2
+          p: 1.0
+      - name: RandomSunFlare
+        params:
+          flare_roi: [0, 0, 1, 1]
+          angle_range: [0, 1]
+          num_flare_circles_range: [5, 10]
+          src_radius: 30
+          src_color: [255, 255, 255]
+          method: "physics_based"
+          p: 1.0
+
+- name: OneOf
+  params:
+    p: 0.7
+    transforms:
+      - name: RandomBrightnessContrast
+        params:
+          brightness_limit: [-0.3, 0.3]
+          contrast_limit: [-0.3, 0.3]
+          p: 1.0
+      - name: RandomToneCurve
+        params:
+          scale: 0.1
+          p: 1.0
+      - name: CLAHE
+        params:
+          clip_limit: 2.0
+          tile_grid_size: [8, 8]
+          p: 1.0
+
+- name: Downscale
+  params:
+    scale_range: [0.2, 0.8]
+    p: 1.0
+
+- name: LongestMaxSize
+  params:
+    max_size: 224
+    p: 1.0
+    interpolation: 3
+    mask_interpolation: 2
+
+- name: PadIfNeeded
+  params:
+    p: 1.0
+    min_height: 224
+    min_width: 224
+    border_mode: 0
+    fill: 0
+
+- name: Resize
+  params:
+    height: 128
+    width: 128
+    p: 1.0

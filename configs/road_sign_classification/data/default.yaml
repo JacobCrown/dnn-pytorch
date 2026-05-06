@@ -1,0 +1,9 @@
+root: "/mnt/c/Users/jkoro/Desktop/Work/MaxDrogi/znaki-drogowe/znaki-drogowe/train_png_flat"
+train_dir: "."
+val_dir: "."
+test_dir: null
+extensions: [".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".svg"]
+# For debugging purposes, optional
+max_samples: null
+# Number of samples to generate per class in each epoch
+samples_per_class: 10

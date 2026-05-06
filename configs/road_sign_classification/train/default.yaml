@@ -1,0 +1,44 @@
+# Training hyperparameters
+
+epochs: 100
+batch_size: 16
+num_workers: 4
+pin_memory: false
+shuffle: true
+
+optimizer:
+  name: AdamW  # options: Adam, AdamW, SGD
+  params:
+    lr: 0.0005
+    weight_decay: 0.0001
+
+# LR scheduler
+scheduler:
+  name: CosineAnnealingLR   # options: CosineAnnealingLR, StepLR, ReduceLROnPlateau, None
+  params:
+    T_max: 100
+    eta_min: 0.0001
+
+# Loss function (list — matches BaseTrainingConfig.loss_function: list[LossFunctionConfig])
+loss_function:
+  - name: CrossEntropyLoss   # options: CrossEntropyLoss, FocalLoss
+    params:
+      label_smoothing: 0.1
+
+# Mixed precision
+use_amp: false
+
+# Gradient clipping (null disables)
+gradient_clip: null
+
+# Resume from checkpoint path
+resume_from_checkpoint: null
+
+# Early stopping
+early_stopping_patience: 5
+
+# Root directory for output files
+root_dir: "output"
+checkpoints_dir: "checkpoints"
+logs_dir: "logs"
+visualize_dir: "visualizations"

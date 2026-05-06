@@ -1,0 +1,16 @@
+package: _global_
+
+defaults:
+  - _self_
+  - augmentations: default
+  - train: default
+  - data: default
+  - model: default
+  - generation: default
+  - override hydra/job_logging: stdout
+
+family_search_results_dir: null
+
+hydra:
+  run:
+    dir: ${train.root_dir}/road_sign_classification/${basename:${data.root}}/${model.name}_${model.height}x${model.width}_${train.epochs}epochs_${train.batch_size}bs

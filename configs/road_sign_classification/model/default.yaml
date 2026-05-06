@@ -1,0 +1,7 @@
+name: "convnext_tiny"
+num_classes: 359
+in_channels: 3
+pretrained: true
+dropout: 0.3
+width: 224
+height: 224

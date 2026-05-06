@@ -1,0 +1,107 @@
+# 1. Blur (Optyka / Ruch)
+# p=1.0 (zawsze rozmywamy, żeby dopasować ostrość do tła)
+- name: OneOf
+  params:
+    p: 1.0
+    transforms:
+      - name: GaussianBlur
+        params:
+          blur_limit: [3, 5]
+          sigma_limit: [0, 3]
+          p: 1.0
+      - name: MotionBlur
+        params:
+          allow_shifted: false
+          p: 1.0
+      # - name: MedianBlur
+      #   params:
+      #     blur_limit: [3, 5]
+      #     p: 1.0
+      - name: Defocus
+        params:
+          radius: [1, 3]
+          alias_blur: [0.1, 0.3]
+          p: 1.0
+
+# 2. Noise (Sensor / Ziarno)
+# p=1.0 (zawsze dodajemy szum, bo tło jest słabej jakości)
+- name: OneOf
+  params:
+    p: 1.0
+    transforms:
+      - name: GaussNoise
+        params:
+          std_range: [0.05, 0.1]
+          mean_range: [-0.05, 0.05]
+          p: 1.0
+      - name: ISONoise
+        params:
+          color_shift: [0.01, 0.05]
+          intensity: [0.1, 0.3]
+          p: 1.0
+      - name: MultiplicativeNoise
+        params:
+          multiplier: [0.9, 1.1]
+          per_channel: true
+          elementwise: true
+          p: 1.0
+
+# 3. Atmosfera (Fizyka)
+# p=0.2 (okazjonalnie mgła lub flara)
+- name: OneOf
+  params:
+    p: 0.2
+    transforms:
+      - name: RandomFog
+        params:
+          fog_coef_range: [0.3, 1]
+          alpha_coef: 0.1
+          p: 1.0
+      - name: RandomSunFlare
+        params:
+          flare_roi: [0, 0, 1, 1]
+          angle_range: [0, 1]
+          num_flare_circles_range: [5, 10]
+          src_radius: 30
+          src_color: [255, 255, 255]
+          method: "physics_based"
+          p: 1.0
+
+# 4. Oświetlenie (Unifikacja)
+# p=0.7 (często zmieniamy jasność, żeby skleić znak z tłem)
+- name: OneOf
+  params:
+    p: 0.7
+    transforms:
+      - name: RandomBrightnessContrast
+        params:
+          brightness_limit: [-0.1, 0.1]
+          contrast_limit: [-0.1, 0.1]
+          p: 1.0
+      - name: RandomToneCurve
+        params:
+          scale: 0.1
+          p: 1.0
+
+# 5. Post-process (Lokalny kontrast)
+# p=0.3
+- name: CLAHE
+  params:
+    clip_limit: 2.0
+    tile_grid_size: [8, 8]
+    p: 0.3
+
+- name: LongestMaxSize
+  params:
+    max_size: 224
+    p: 1.0
+    interpolation: 3
+    mask_interpolation: 2
+
+- name: PadIfNeeded
+  params:
+    p: 1.0
+    min_height: 224
+    min_width: 224
+    border_mode: 0
+    fill: 0

@@ -1,0 +1,28 @@
+# Tile stage (złożony kadr: tło + znak) — odpowiada `transform_tile` w kodzie.
+# Łącz z preprocessingiem modelu (Resize/Normalize) przez Hydra: augmentations: synthetic-tile-fog-sun
+- name: RandomCropFromBorders
+  params:
+    crop_left: 0.2
+    crop_right: 0.2
+    crop_top: 0.2
+    crop_bottom: 0.2
+    p: 0.3
+
+- name: OneOf
+  params:
+    p: 0.3
+    transforms:
+      - name: RandomFog
+        params:
+          fog_coef_range: [0.1, 0.2]
+          alpha_coef: 0.1
+          p: 1.0
+      - name: RandomSunFlare
+        params:
+          flare_roi: [0, 0, 1, 1]
+          angle_range: [0, 1]
+          num_flare_circles_range: [5, 10]
+          src_radius: 30
+          src_color: [255, 255, 255]
+          method: "physics_based"
+          p: 1.0
