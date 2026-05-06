@@ -1,0 +1,34 @@
+name: "resnext26ts"
+in_channels: 3
+pretrained: true
+dropout: 0.2
+freeze_backbone: false
+freeze_backbone_bn_eval: false
+width: 128
+height: 128
+preprocessing:
+  - name: LongestMaxSize
+    params:
+      max_size: 224
+      p: 1.0
+      interpolation: 3
+      mask_interpolation: 2
+  - name: PadIfNeeded
+    params:
+      p: 1.0
+      min_height: 224
+      min_width: 224
+      border_mode: 0
+      fill: 0
+  - name: Resize
+    params:
+      height: 128
+      width: 128
+      interpoltaion: 2
+  - name: Normalize
+    params:
+      mean: [0.485, 0.456, 0.406]
+      std: [0.229, 0.224, 0.225]
+  - name: ToTensorV2
+    params:
+      transpose_mask: false

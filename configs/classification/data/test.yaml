@@ -1,0 +1,71 @@
+root: "data/classification/classification-merged"
+train_dir: "train"
+val_dir: "valid"
+test_dir: "test"
+extensions: [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
+# For debugging purposes, optional
+max_samples: null
+
+# Merge multiple class folders (names must match subdirs under train/val/test) into one training label.
+# Set to null when not used.
+# class_mapping: null
+# Example:
+class_mapping:
+  - name: B-5
+    map_classes:
+      - B-5
+      - B-5a
+  - name: B-7
+    map_classes:
+      - B-7
+      - B-7a
+  - name: B-35
+    map_classes:
+      - B-35
+      - B-35a
+      - B-35b
+      - B-35c
+  - name: C-13-16
+    map_classes:
+      - C-13-16
+      - C-13-16a
+      - C-13-16b
+      - C-13a-16a
+      - C-13a-16aa
+      - C-13a-16ab
+  - name: D-4b
+    map_classes:
+      - D-4b
+      - D-4c
+  - name: D-23
+    map_classes:
+      - D-23
+      - D-23b
+      - D-23c
+  - name: F-3
+    map_classes:
+      - F-3
+      - F-3a
+      - F-3b
+      - F-3c
+  - name: F-6
+    map_classes:
+      - F-6
+      - F-6a
+  - name: T-18
+    map_classes:
+      - T-18
+      - T-18a
+      - T-18b
+      - T-18c
+  - name: T-30
+    map_classes:
+      - T-30a
+      - T-30b
+      - T-30c
+      - T-30d
+      - T-30e
+      - T-30f
+      - T-30g
+      - T-30h
+      - T-30i

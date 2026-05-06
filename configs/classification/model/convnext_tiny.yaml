@@ -1,0 +1,21 @@
+name: "convnext_small"
+in_channels: 3
+pretrained: true
+dropout: 0.2
+freeze_backbone: true
+freeze_backbone_bn_eval: false
+width: 128
+height: 128
+preprocessing:
+  - name: Resize
+    params:
+      height: 128
+      width: 128
+      interpoltaion: 2
+  - name: Normalize
+    params:
+      mean: [0.485, 0.456, 0.406]
+      std: [0.229, 0.224, 0.225]
+  - name: ToTensorV2
+    params:
+      transpose_mask: false

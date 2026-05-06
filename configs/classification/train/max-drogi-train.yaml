@@ -1,0 +1,70 @@
+# Training hyperparameters
+epochs: 30
+batch_size: 256
+num_workers: 6
+pin_memory: false
+shuffle: true
+
+# DataLoader performance knobs
+persistent_workers: false
+prefetch_factor: 2
+drop_last: false
+
+optimizer:
+  name: AdamW  # options: Adam, AdamW, SGD
+  params:
+    lr: 0.001
+    weight_decay: 0.0001
+
+# LR scheduler
+scheduler:
+  name: CosineAnnealingLR   # options: CosineAnnealingLR, StepLR, ReduceLROnPlateau, None
+  params:
+    T_max: 100
+    eta_min: 0.0001
+
+# Loss function
+loss_function:
+  - name: SoftCrossEntropyLoss
+    weight: 1.0
+    params:
+      smooth_factor: 0.05
+
+# loss_function:
+#   - name: FocalLoss
+#     weight: 0.65
+#     params:
+#       mode: "multiclass"
+#       gamma: 2.0
+  
+#   - name: DiceLoss
+#     weight: 0.35
+#     params:
+#       mode: "multiclass"
+#       ignore_index: 255
+#       smooth: 1e-6
+
+# Mixed precision
+use_amp: true
+
+# Gradient clipping (null disables)
+gradient_clip: null
+
+# Resume from checkpoint path
+resume_from_checkpoint: null
+# Run test evaluation with:
+# python -m src.classification.test model=max-drogi-model-resnext26 \
+#   eval_checkpoint="/abs/path/to/checkpoints/best.pth"
+
+# Early stopping
+early_stopping_patience: 5
+
+# Root directory for output files
+root_dir: "output"
+checkpoints_dir: "checkpoints"
+logs_dir: "logs"
+visualize_dir: "visualizations"
+
+# visualization flags
+visualize_pre_train: false
+visualize_post_train: true
