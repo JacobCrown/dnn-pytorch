@@ -100,6 +100,9 @@ def _load_cached_background_paths(
         return None
 
     cached_paths = [Path(path_str) for path_str in payload.get("paths", [])]
+    if not cached_paths:
+        return None
+
     existing_paths = [path for path in cached_paths if path.exists()]
     if len(existing_paths) != len(cached_paths):
         logger.warning(
@@ -122,6 +125,9 @@ def _save_cached_background_paths(
     stride: int,
     background_paths: list[Path],
 ) -> None:
+    if not background_paths:
+        return
+
     cache_path = _background_cache_path(directory, extensions, stride)
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -149,6 +155,8 @@ def get_sampled_background_paths(
         recursive=True,
     )
     sampled_background_paths = _sample_background_paths(all_background_paths, stride)
+    if not sampled_background_paths and all_background_paths:
+        sampled_background_paths = all_background_paths
     _save_cached_background_paths(
         directory,
         extensions,
@@ -254,7 +262,7 @@ def build_sign_augmentation_pipeline() -> A.Compose:
             A.OneOf(
                 [
                     A.Affine(
-                        scale={"x": (0.7, 1), "y": (0.9, 1)},
+                        scale={"x": (0.5, 1), "y": (0.9, 1)},
                         rotate=(-10, 10),
                         interpolation=cv2.INTER_AREA,
                         mask_interpolation=cv2.INTER_CUBIC,
@@ -296,7 +304,12 @@ def build_sign_augmentation_pipeline() -> A.Compose:
                         p=1.0,
                     ),
                 ],
-                p=1.0,
+                p=0.8,
+            ),
+            A.GaussNoise(
+                std_range=(0.01, 0.05),
+                mean_range=(-0.01, 0.01),
+                p=0.3,
             ),
             A.OneOf(
                 [
@@ -511,10 +524,14 @@ class SyntheticSignGenerator:
         bg_w, bg_h = background.size
         icon_w, icon_h = img.size
 
-        margin_width_right = random.randint(0, int(icon_w * 0.05))
-        margin_width_left = random.randint(0, int(icon_w * 0.05))
-        margin_height_bottom = random.randint(0, int(icon_h * 0.05))
-        margin_height_top = random.randint(0, int(icon_h * 0.05))
+        # margin_width_right = random.randint(0, int(icon_w * 0.05))
+        # margin_width_left = random.randint(0, int(icon_w * 0.05))
+        # margin_height_bottom = random.randint(0, int(icon_h * 0.05))
+        # margin_height_top = random.randint(0, int(icon_h * 0.05))
+        margin_width_right = 0
+        margin_width_left = 0
+        margin_height_bottom = 0
+        margin_height_top = 0
         target_w, target_h = img.size
 
         max_x = max(margin_width_left, bg_w - target_w - margin_width_right)

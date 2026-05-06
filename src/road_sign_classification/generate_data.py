@@ -26,6 +26,7 @@ from PIL import Image
 from tqdm import tqdm
 
 from src.common.augmentations import get_augmentations
+from src.common.hydra_resolvers import register_hydra_resolvers
 from src.common.logging import setup_logging
 from src.common.utils import set_seed
 from src.road_sign_classification.config import ClassificationConfig
@@ -37,6 +38,8 @@ from src.road_sign_classification.dataset import (
 from src.road_sign_classification.model_manager import (
     build_classification_preprocessing,
 )
+
+register_hydra_resolvers()
 
 logger = setup_logging(__file__)
 
@@ -99,7 +102,7 @@ def resolve_num_workers(config: ClassificationConfig, task_count: int) -> int:
     if config.generation.num_workers is not None:
         return max(1, min(config.generation.num_workers, task_count))
     cpu_count = os.cpu_count() or 1
-    return max(1, min(cpu_count // 2, 8, task_count))
+    return max(1, min(cpu_count // 2, 12, task_count))
 
 
 def resolve_start_method(config: ClassificationConfig) -> str:

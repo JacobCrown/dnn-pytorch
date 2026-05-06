@@ -9,7 +9,7 @@ from src.common.config import (
     BaseTrainingConfig,
 )
 
-DEFAULT_ROAD_SIGN_BACKGROUNDS_DIR = "/mnt/c/Users/jkoro/Desktop/Work/MaxDrogi/PRZYKŁADY"
+DEFAULT_ROAD_SIGN_BACKGROUNDS_DIR = "data/generation/backgrounds"
 
 
 @dataclass
