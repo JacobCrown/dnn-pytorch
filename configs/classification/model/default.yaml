@@ -1,17 +1,16 @@
-name: "resnet34"
-num_classes: 364
+name: "convnextv2_nano"
 in_channels: 3
 pretrained: true
 dropout: 0.2
-freeze_backbone: false
+freeze_backbone: true
 freeze_backbone_bn_eval: false
-width: 128
-height: 128
+width: 32
+height: 32
 preprocessing:
   - name: Resize
     params:
-      height: 128
-      width: 128
+      height: 32
+      width: 32
       interpolation: 2
   - name: Normalize
     params:

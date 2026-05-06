@@ -30,6 +30,7 @@ dependencies = [
   "onnxruntime>=1.23.2",
   "optuna>=4.8.0",
   "rich>=15.0.0",
+  "wandb>=0.26.1",
 ]
 
 [tool.uv.sources]
@@ -62,6 +63,8 @@ dev = [
 packages = ["src"]
 
 [project.scripts]
+dnn-search-classification = "src.classification.optuna_search:main"
+dnn-train-best-classification = "src.classification.train_best:main"
 dnn-train-classification = "src.classification.main:main"
 dnn-train-segmentation = "src.segmentation.main:main"
 

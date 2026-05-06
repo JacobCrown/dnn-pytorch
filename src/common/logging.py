@@ -180,11 +180,16 @@ def configure_run_logging(
     return _CONFIGURED_LOG_FILE
 
 
-def reset_run_logging_configuration_for_testing() -> None:
-    """Reset process-global logging gate (tests only)."""
+def reset_run_logging_configuration() -> None:
+    """Reset process-global logging gate before configuring a new run."""
     global _LOGGING_CONFIGURED, _CONFIGURED_LOG_FILE
     _LOGGING_CONFIGURED = False
     _CONFIGURED_LOG_FILE = None
+
+
+def reset_run_logging_configuration_for_testing() -> None:
+    """Backward-compatible alias used by tests."""
+    reset_run_logging_configuration()
 
 
 def log_gpu_memory(logger: logging.Logger) -> None:

@@ -7,6 +7,7 @@ optimizer and scheduler settings.
 
 from dataclasses import asdict, dataclass, field, fields, is_dataclass
 from pathlib import Path
+from types import UnionType
 from typing import Any, TypeVar, Union, get_args, get_origin, get_type_hints
 
 import yaml
@@ -91,7 +92,7 @@ def _from_dict_recursive[T: "BaseConfig"](cls: type[T], data: dict[str, Any]) ->
 def _resolve_optional_type(tp):
     """Resolves Optional[T] to T for convenient runtime checks."""
     origin = get_origin(tp)
-    if origin is Union:
+    if origin in (Union, UnionType):
         args = [a for a in get_args(tp) if a is not type(None)]
         return args[0] if len(args) == 1 else tp
     return tp

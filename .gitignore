@@ -19,4 +19,5 @@ checkpoints/
 # Classification Hydra: track only composer + per-group defaults
 configs/classification/**
 !configs/classification/main.yaml
+!configs/classification/**/
 !configs/classification/**/default.yaml

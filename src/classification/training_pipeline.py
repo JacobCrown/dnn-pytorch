@@ -34,12 +34,30 @@ class ClassificationDataPipeline:
 
 
 @dataclass(frozen=True)
+class ClassificationTrainingMetrics:
+    """Metric history collected by ``ClassificationTrainer``."""
+
+    losses: dict[str, list[float]]
+    accuracies: dict[str, list[float]]
+    best_val_loss: float | None
+    best_val_accuracy: float | None
+    final_train_loss: float | None
+    final_train_accuracy: float | None
+    final_val_loss: float | None
+    final_val_accuracy: float | None
+    test_loss: float | None
+    test_accuracy: float | None
+
+
+@dataclass(frozen=True)
 class ClassificationTrainingOutcome:
     """Paths after a completed training run (Hydra cwd is typically outputs/...)."""
 
     checkpoints_dir: Path
     best_checkpoint_path: Path | None
     predictor_checkpoint_path: Path | None
+    metrics: ClassificationTrainingMetrics
+    used_validation: bool
 
 
 def apply_num_classes_from_train_dataset(
@@ -200,6 +218,48 @@ def log_model_summary(
     )
 
 
+def _last(values: list[float]) -> float | None:
+    return float(values[-1]) if values else None
+
+
+def _best_accuracy_for_min_loss(
+    losses: list[float], accuracies: list[float]
+) -> float | None:
+    if not losses or not accuracies:
+        return None
+    best_idx = min(range(len(losses)), key=losses.__getitem__)
+    if best_idx >= len(accuracies):
+        return None
+    return float(accuracies[best_idx])
+
+
+def _collect_training_metrics(
+    trainer: ClassificationTrainer,
+) -> ClassificationTrainingMetrics:
+    losses = {
+        split: [float(value) for value in values]
+        for split, values in trainer.metrics.losses.items()
+    }
+    accuracies = {
+        split: [float(value) for value in values]
+        for split, values in trainer.metrics.accuracies.items()
+    }
+    val_losses = losses.get("val", [])
+    val_accuracies = accuracies.get("val", [])
+    return ClassificationTrainingMetrics(
+        losses=losses,
+        accuracies=accuracies,
+        best_val_loss=min(val_losses) if val_losses else None,
+        best_val_accuracy=_best_accuracy_for_min_loss(val_losses, val_accuracies),
+        final_train_loss=_last(losses.get("train", [])),
+        final_train_accuracy=_last(accuracies.get("train", [])),
+        final_val_loss=_last(val_losses),
+        final_val_accuracy=_last(val_accuracies),
+        test_loss=_last(losses.get("test", [])),
+        test_accuracy=_last(accuracies.get("test", [])),
+    )
+
+
 def run_classification_training(
     config: ClassificationConfig,
 ) -> ClassificationTrainingOutcome:
@@ -247,4 +307,6 @@ def run_classification_training(
         checkpoints_dir=ckpt_dir,
         best_checkpoint_path=best if best.exists() else None,
         predictor_checkpoint_path=predictor if predictor.exists() else None,
+        metrics=_collect_training_metrics(trainer),
+        used_validation=data_pipeline.val_loader is not None,
     )
