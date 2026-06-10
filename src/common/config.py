@@ -147,6 +147,16 @@ class EMAConfig(BaseConfig):
 
 
 @dataclass
+class TrackingConfig(BaseConfig):
+    """Training run tracking settings."""
+
+    local_enabled: bool = True
+    wandb_enabled: bool = False
+    wandb_project: str | None = None
+    tags: list[str] = field(default_factory=list)
+
+
+@dataclass
 class BaseDataConfig(BaseConfig):
     """Configuration for data loading and preprocessing."""
 
@@ -202,6 +212,9 @@ class BaseTrainingConfig(BaseConfig):
 
     # Exponential moving average of model weights
     ema: EMAConfig = field(default_factory=EMAConfig)
+
+    # Tracking
+    tracking: TrackingConfig = field(default_factory=TrackingConfig)
 
     # Root directory for output files
     root_dir: str = "output"

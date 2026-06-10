@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Protocol
 
@@ -18,6 +18,7 @@ from src.common.experiment_registry import write_run_record
 from src.common.losses import get_loss_function
 from src.common.optimizers import get_optimizer
 from src.common.schedulers import get_scheduler
+from src.common.tracking import build_tracker
 from src.common.training_contracts import TrainingArtifacts
 from src.segmentation.config import SegmentationConfig, SegmentationModelConfig
 from src.segmentation.dataset import SegmentationDataset
@@ -293,4 +294,13 @@ def run_segmentation_training(
         config=config.to_dict(),
         used_validation=outcome.used_validation,
     )
+    tracker = build_tracker(
+        config=config.train.tracking,
+        run_dir=outcome.artifacts.root_dir,
+        task_name="segmentation",
+    )
+    tracker.log_metrics(asdict(outcome.metrics))
+    if outcome.best_checkpoint_path is not None:
+        tracker.log_artifact("best_checkpoint", outcome.best_checkpoint_path)
+    tracker.close()
     return outcome
