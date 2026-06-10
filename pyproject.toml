@@ -72,6 +72,7 @@ dnn-export-classification = "src.classification.export:main"
 dnn-export-segmentation = "src.segmentation.export:main"
 dnn-serve-classification = "src.classification.serve:main"
 dnn-serve-segmentation = "src.segmentation.serve:main"
+dnn-studio = "src.common.experiment_studio:main"
 
 [tool.ruff]
 line-length = 88
