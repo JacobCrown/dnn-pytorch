@@ -334,6 +334,21 @@ def run_classification_training(
 
     criterion = get_loss_function(config.train.loss_function)
 
+    experiment_root = classification_experiment_root(
+        train_root_dir=config.train.root_dir,
+        data_root=config.data.root,
+        model_name=config.model.name,
+        height=config.model.height,
+        width=config.model.width,
+        epochs=config.train.epochs,
+        batch_size=config.train.batch_size,
+    )
+    tracker = build_tracker(
+        config=config.train.tracking,
+        run_dir=experiment_root,
+        task_name="classification",
+    )
+
     trainer = ClassificationTrainer(
         model_manager=classification_model_manager,
         train_loader=data_pipeline.train_loader,
@@ -343,6 +358,7 @@ def run_classification_training(
         optimizer=optimizer,
         scheduler=scheduler,
         cfg=config,
+        tracker=tracker,
     )
 
     logger.info("Starting training for %d epochs", config.train.epochs)
@@ -365,11 +381,6 @@ def run_classification_training(
         metrics=outcome.metrics,
         config=config.to_dict(),
         used_validation=outcome.used_validation,
-    )
-    tracker = build_tracker(
-        config=config.train.tracking,
-        run_dir=outcome.artifacts.root_dir,
-        task_name="classification",
     )
     tracker.log_metrics(asdict(outcome.metrics))
     if outcome.best_checkpoint_path is not None:

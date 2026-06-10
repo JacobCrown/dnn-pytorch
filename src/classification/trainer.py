@@ -22,6 +22,7 @@ from src.common.logging import (
     gpu_epoch_log_suffix,
 )
 from src.common.progress_tools import iterate_with_progress
+from src.common.tracking import Tracker
 from src.common.utils import DEVICE
 from src.core.trainer import BaseTrainer
 
@@ -150,8 +151,10 @@ class ClassificationTrainer(
         val_loader: DataLoader | None,
         cfg: ClassificationConfig,
         test_loader: DataLoader | None = None,
+        tracker: Tracker | None = None,
     ):
         self.cfg: ClassificationConfig = cfg
+        self.tracker = tracker
         # Task specific attributes
         self.class_names: list[str] = train_loader.dataset.get_class_names()
         super().__init__(
@@ -399,6 +402,18 @@ class ClassificationTrainer(
                     ema_val_loss,
                     ema_val_acc,
                 )
+
+            if self.tracker is not None:
+                epoch_metrics = {
+                    "train_loss": train_loss,
+                    "train_accuracy": train_acc,
+                    "val_loss": val_loss,
+                    "val_accuracy": val_acc,
+                }
+                if ema_val_loss is not None and ema_val_acc is not None:
+                    epoch_metrics["ema_val_loss"] = ema_val_loss
+                    epoch_metrics["ema_val_accuracy"] = ema_val_acc
+                self.tracker.log_metrics(epoch_metrics, step=epoch + 1)
 
             # Always save last checkpoint
             self._save_classification_checkpoint(

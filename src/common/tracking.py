@@ -63,6 +63,12 @@ def build_tracker(
     run_dir: str | Path,
     task_name: str,
 ) -> Tracker:
+    """Build a tracker for a training run.
+
+    Local JSON tracking is always available when ``local_enabled`` is true.
+    ``wandb_enabled`` currently logs a warning and falls back to local JSON;
+    full W&B integration is only wired for Optuna search today.
+    """
     if config.wandb_enabled:
         logger.warning("W&B tracking is configured but not initialized yet; using local tracking.")
     if config.local_enabled:

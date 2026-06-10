@@ -14,6 +14,7 @@ from tqdm import tqdm
 
 from src.common.experiment_paths import segmentation_experiment_root
 from src.common.logging import log_gpu_memory
+from src.common.tracking import Tracker
 from src.common.utils import DEVICE
 from src.core.trainer import BaseTrainer
 from src.segmentation.config import SegmentationConfig
@@ -43,8 +44,10 @@ class SegmentationTrainer(
         val_loader: DataLoader,
         cfg: SegmentationConfig,
         test_loader: DataLoader | None = None,
+        tracker: Tracker | None = None,
     ):
         self.cfg: SegmentationConfig = cfg
+        self.tracker = tracker
         super().__init__(
             model_manager=model_manager,
             criterion=criterion,
@@ -222,6 +225,17 @@ class SegmentationTrainer(
             logger.info(f"  Val Loss: {val_loss:.4f}, Val mIoU: {val_miou:.4f}")
 
             log_gpu_memory(logger)
+
+            if self.tracker is not None:
+                self.tracker.log_metrics(
+                    {
+                        "train_loss": train_loss,
+                        "train_iou": train_miou,
+                        "val_loss": val_loss,
+                        "val_iou": val_miou,
+                    },
+                    step=epoch + 1,
+                )
 
             # Always save last checkpoint
             self._save_checkpoint("last.pth")
