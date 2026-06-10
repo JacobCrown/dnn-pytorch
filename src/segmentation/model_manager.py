@@ -1,4 +1,4 @@
-"""Utility to construct and optionally freeze timm models from Hydra config."""
+"""Utility to construct segmentation models from Hydra config."""
 
 import logging
 from pathlib import Path
@@ -85,8 +85,11 @@ class SegmentationModelManager(BaseModelManager[SegmentationModelConfig]):
 
     @classmethod
     def from_checkpoint_path(cls, checkpoint_path: Path) -> "SegmentationModelManager":
+        """Build a model manager and load trained weights from a checkpoint."""
         checkpoint = torch.load(
             str(checkpoint_path), map_location=DEVICE, weights_only=False
         )
         config = SegmentationModelConfig.from_dict(checkpoint["model_config"])
-        return cls(config)
+        manager = cls(config)
+        manager.load_model_state_dict(checkpoint["model_state_dict"])
+        return manager
