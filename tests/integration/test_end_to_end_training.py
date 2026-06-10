@@ -158,6 +158,14 @@ def test_classification_training_writes_run_record_and_artifacts(tmp_path: Path)
     assert outcome.predictor_checkpoint_path.exists()
     assert (outcome.artifacts.logs_dir / "main.log").exists()
     assert (outcome.artifacts.root_dir / "tracking" / "events.jsonl").exists()
+    events = [
+        json.loads(line)
+        for line in (outcome.artifacts.root_dir / "tracking" / "events.jsonl")
+        .read_text()
+        .splitlines()
+    ]
+    epoch_events = [event for event in events if event.get("type") == "metrics" and event.get("step")]
+    assert len(epoch_events) >= 1
 
 
 @pytest.mark.integration
@@ -176,6 +184,14 @@ def test_segmentation_training_writes_run_record_and_artifacts(tmp_path: Path) -
     assert outcome.best_checkpoint_path.exists()
     assert (outcome.artifacts.logs_dir / "main.log").exists()
     assert (outcome.artifacts.root_dir / "tracking" / "events.jsonl").exists()
+    events = [
+        json.loads(line)
+        for line in (outcome.artifacts.root_dir / "tracking" / "events.jsonl")
+        .read_text()
+        .splitlines()
+    ]
+    epoch_events = [event for event in events if event.get("type") == "metrics" and event.get("step")]
+    assert len(epoch_events) >= 1
 
 
 @pytest.mark.integration

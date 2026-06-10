@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from src.common.experiment_registry import RunRecord
+from src.common.experiment_registry import RunRecord, format_run_score, score_run_record
 from src.common.experiment_studio import build_studio_html, write_studio
 
 
@@ -29,3 +29,18 @@ def test_write_studio_writes_static_html(tmp_path: Path) -> None:
 
     assert output_path.exists()
     assert "No runs found" in output_path.read_text()
+
+
+def test_segmentation_score_matches_compare_leaderboard_scale() -> None:
+    record = RunRecord(
+        task_name="segmentation",
+        run_dir=Path("output/segmentation/run"),
+        metrics={"best_val_iou": 0.72, "best_val_loss": 0.4},
+        artifacts={},
+        config={},
+        used_validation=True,
+    )
+
+    assert score_run_record(record) == 72.0
+    assert format_run_score(record) == "72.0000"
+    assert "72.0000" in build_studio_html([record])
