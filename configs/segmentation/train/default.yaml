@@ -45,7 +45,7 @@ use_amp: true
 gradient_clip: null
 
 # Resume from checkpoint
-resume_from_checkpoint: "output/segmentation/CamVid/DeepLabV3Plus_resnet18_368x480_10epochs_12bs/checkpoints/best.pth"
+resume_from_checkpoint: null
 
 # Early stopping
 early_stopping_patience: null

@@ -20,7 +20,9 @@ from src.classification.model_manager import ClassificationModelManager
 from src.classification.trainer import ClassificationTrainer
 from src.common.augmentations import get_augmentations
 from src.common.data_utils import create_data_loaders
+from src.common.experiment_paths import classification_experiment_root
 from src.common.experiment_registry import write_run_record
+from src.common.logging import configure_run_logging
 from src.common.losses import get_loss_function
 from src.common.optimizers import get_optimizer
 from src.common.schedulers import get_scheduler
@@ -298,6 +300,19 @@ def run_classification_training(
     config: ClassificationConfig,
 ) -> ClassificationTrainingOutcome:
     """Wire datasets, model, optimizer and run training. Callable without Hydra."""
+    configure_run_logging(
+        experiment_directory=classification_experiment_root(
+            train_root_dir=config.train.root_dir,
+            data_root=config.data.root,
+            model_name=config.model.name,
+            height=config.model.height,
+            width=config.model.width,
+            epochs=config.train.epochs,
+            batch_size=config.train.batch_size,
+        ),
+        use_rich_console=True,
+        quiet_third_party_loggers=True,
+    )
     data_preproc = get_augmentations(config.model.preprocessing)
     data_pipeline = build_classification_data_pipeline(config, data_preproc)
     log_data_pipeline_summary(config, data_pipeline)
