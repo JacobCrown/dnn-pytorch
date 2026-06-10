@@ -10,8 +10,12 @@ import albumentations as A
 from torch.utils.data import DataLoader
 from torchinfo import summary
 
-from src.classification.config import ClassificationConfig, ClassificationModelConfig
-from src.classification.dataset import ClassificationDataset
+from src.classification.config import (
+    ClassificationConfig,
+    ClassificationDataConfig,
+    ClassificationModelConfig,
+)
+from src.classification.dataset import ClassificationDataset, build_mixed_train_dataset
 from src.classification.model_manager import ClassificationModelManager
 from src.classification.trainer import ClassificationTrainer
 from src.common.augmentations import get_augmentations
@@ -83,6 +87,11 @@ def apply_num_classes_from_train_dataset(
     return derived
 
 
+def resolve_eval_data_root(data_config: ClassificationDataConfig) -> Path:
+    """Use real data for eval splits when mixed real/synthetic training is configured."""
+    return Path(data_config.real_root) if data_config.real_root else Path(data_config.root)
+
+
 def build_classification_data_pipeline(
     config: ClassificationConfig,
     data_preproc: A.Compose,
@@ -97,16 +106,28 @@ def build_classification_data_pipeline(
     logger.debug("Eval transforms: %s", eval_transforms)
 
     data_config = config.data
-    train_dataset = ClassificationDataset(
-        data_root=Path(data_config.root) / data_config.train_dir,
-        transforms=train_transforms,
-        extensions=data_config.extensions,
-        max_samples=data_config.max_samples,
-        class_mapping=data_config.class_mapping,
-    )
+    if data_config.real_root:
+        train_dataset = build_mixed_train_dataset(
+            real_root=Path(data_config.real_root) / data_config.real_train_dir,
+            synthetic_root=Path(data_config.root) / data_config.train_dir,
+            transforms=train_transforms,
+            extensions=data_config.extensions,
+            max_samples=data_config.max_samples,
+            class_mapping=data_config.class_mapping,
+            seed=42,
+        )
+    else:
+        train_dataset = ClassificationDataset(
+            data_root=Path(data_config.root) / data_config.train_dir,
+            transforms=train_transforms,
+            extensions=data_config.extensions,
+            max_samples=data_config.max_samples,
+            class_mapping=data_config.class_mapping,
+        )
     canonical = train_dataset.get_class_to_idx()
+    eval_root = resolve_eval_data_root(data_config)
     val_dataset = ClassificationDataset(
-        data_root=Path(data_config.root) / data_config.val_dir,
+        data_root=eval_root / data_config.val_dir,
         transforms=eval_transforms,
         extensions=data_config.extensions,
         max_samples=data_config.max_samples,
@@ -118,7 +139,7 @@ def build_classification_data_pipeline(
         test_dataset = None
     else:
         test_dataset = ClassificationDataset(
-            data_root=Path(data_config.root) / data_config.test_dir,
+            data_root=eval_root / data_config.test_dir,
             transforms=eval_transforms,
             extensions=data_config.extensions,
             max_samples=data_config.max_samples,

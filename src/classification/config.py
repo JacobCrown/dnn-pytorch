@@ -24,6 +24,8 @@ class ClassificationDataConfig(BaseDataConfig):
     """Configuration for classification datasets."""
 
     class_mapping: list[ClassificationClassMappingConfig] | None = None
+    real_root: str | None = None
+    real_train_dir: str = "train"
 
 
 @dataclass

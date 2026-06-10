@@ -1,4 +1,5 @@
 import logging
+import random
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +18,13 @@ class DataDistribution:
     class_name: str
     count: int
     percentage: float
+
+
+@dataclass(frozen=True)
+class MixedTrainClassCount:
+    class_name: str
+    real_count: int
+    synthetic_count: int
 
 
 class ClassificationDataset(BaseDataset):
@@ -51,6 +59,7 @@ class ClassificationDataset(BaseDataset):
     ):
         self.class_mapping = class_mapping
         self.canonical_class_to_idx = canonical_class_to_idx
+        self.mixed_train_class_counts: list[MixedTrainClassCount] | None = None
         super().__init__(
             data_root=data_root,
             transforms=transforms,
@@ -285,3 +294,87 @@ def _build_final_classes(
     )
 
     return final_class_names, source_to_target
+
+
+def _image_files_for_class(
+    root: Path,
+    source_class_name: str,
+    extensions: list[str],
+) -> list[Path]:
+    class_dir = root / source_class_name
+    if not class_dir.exists():
+        return []
+    return [
+        file_path
+        for file_path in sorted(class_dir.iterdir())
+        if file_path.suffix.lower() in extensions
+    ]
+
+
+def build_mixed_train_dataset(
+    *,
+    real_root: Path,
+    synthetic_root: Path,
+    transforms: A.Compose,
+    extensions: list[str],
+    max_samples: int | None,
+    class_mapping: list[ClassificationClassMappingConfig] | None,
+    seed: int,
+) -> ClassificationDataset:
+    """Build a real-first classification dataset with synthetic fill samples."""
+    real_source_names = sorted(d.name for d in real_root.iterdir() if d.is_dir())
+    synthetic_source_names = sorted(d.name for d in synthetic_root.iterdir() if d.is_dir())
+    source_class_names = sorted(set(real_source_names) | set(synthetic_source_names))
+    class_names, source_to_target = _build_final_classes(source_class_names, class_mapping)
+    class_to_idx = {class_name: idx for idx, class_name in enumerate(class_names)}
+    rng = random.Random(seed)
+
+    dataset = object.__new__(ClassificationDataset)
+    dataset.data_root = synthetic_root
+    dataset.transforms = transforms
+    dataset.extensions = extensions
+    dataset.max_samples = max_samples
+    dataset.class_mapping = class_mapping
+    dataset.canonical_class_to_idx = None
+    dataset.samples = []
+    dataset.class_names = class_names
+    dataset.class_to_idx = class_to_idx
+    dataset.idx_to_class = {idx: name for name, idx in class_to_idx.items()}
+    dataset.mixed_train_class_counts = []
+
+    for class_name in class_names:
+        source_names = [
+            source_name
+            for source_name in source_class_names
+            if source_to_target.get(source_name, source_name) == class_name
+        ]
+        real_files: list[Path] = []
+        synthetic_files: list[Path] = []
+        for source_name in source_names:
+            real_files.extend(_image_files_for_class(real_root, source_name, extensions))
+            synthetic_files.extend(
+                _image_files_for_class(synthetic_root, source_name, extensions)
+            )
+
+        synthetic_budget = (
+            len(synthetic_files)
+            if max_samples is None
+            else max(0, max_samples - len(real_files))
+        )
+        selected_synthetic = (
+            rng.sample(synthetic_files, synthetic_budget)
+            if synthetic_budget < len(synthetic_files)
+            else list(synthetic_files)
+        )
+        class_idx = class_to_idx[class_name]
+        dataset.samples.extend((str(path), class_idx) for path in real_files)
+        dataset.samples.extend((str(path), class_idx) for path in selected_synthetic)
+        dataset.mixed_train_class_counts.append(
+            MixedTrainClassCount(
+                class_name=class_name,
+                real_count=len(real_files),
+                synthetic_count=len(selected_synthetic),
+            )
+        )
+
+    return dataset
