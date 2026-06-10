@@ -1,0 +1,14 @@
+package: _global_
+
+defaults:
+  - _self_
+  - train: default
+  - data: default
+  - model: default
+  - override hydra/job_logging: stdout
+
+eval_checkpoint: null
+
+hydra:
+  run:
+    dir: ${train.root_dir}/segmentation_eval/${basename:${data.root}}/${model.architecture}_${model.encoder_name}_${model.height}x${model.width}

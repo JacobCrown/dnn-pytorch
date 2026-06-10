@@ -2,6 +2,7 @@
 
 import logging
 import typing as t
+from dataclasses import dataclass
 from pathlib import Path
 
 import torch
@@ -14,6 +15,7 @@ from tqdm import tqdm
 
 from src.common.experiment_paths import segmentation_experiment_root
 from src.common.logging import log_gpu_memory
+from src.common.progress_tools import iterate_with_progress
 from src.common.tracking import Tracker
 from src.common.utils import DEVICE
 from src.core.trainer import BaseTrainer
@@ -24,6 +26,62 @@ from src.segmentation.model_manager import SegmentationModelManager
 from src.segmentation.visualizer import SegmentationVisualizer
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class SegmentationEvaluationSummary:
+    loss: float
+    iou: float
+
+
+def evaluate_segmentation_model(
+    *,
+    model: nn.Module,
+    data_loader: DataLoader,
+    criterion: nn.Module,
+    use_amp: bool,
+    num_classes: int,
+    split_name: str = "Test",
+) -> SegmentationEvaluationSummary:
+    """Evaluate a segmentation model and log aggregate statistics."""
+    model = model.to(DEVICE)
+    model.eval()
+
+    total_loss = torch.tensor(0.0, device=DEVICE)
+    total_iou = torch.tensor(0.0, device=DEVICE)
+    num_batches = len(data_loader)
+
+    with torch.inference_mode():
+        for data, target in iterate_with_progress(
+            data_loader,
+            description=f"Eval · {split_name}",
+            transient=True,
+        ):
+            data, target = data.to(DEVICE), target.to(DEVICE)
+
+            with autocast(device_type=DEVICE, enabled=use_amp):
+                output = model(data)
+                loss = criterion(output, target)
+
+            pred = output.argmax(dim=1)
+            total_loss += loss
+            total_iou += multiclass_jaccard_index(
+                preds=pred,
+                target=target,
+                num_classes=num_classes,
+                average="macro",
+                ignore_index=255,
+            )
+
+    avg_loss = total_loss.item() / num_batches
+    avg_iou = total_iou.item() / num_batches
+    logger.info(
+        "%s | loss=%.4f iou=%.4f",
+        split_name,
+        avg_loss,
+        avg_iou,
+    )
+    return SegmentationEvaluationSummary(loss=avg_loss, iou=avg_iou)
 
 
 class SegmentationTrainer(

@@ -191,7 +191,6 @@ def main(cfg: dict) -> None:
     checkpoint_class_names = _validate_checkpoint_class_names(checkpoint)
 
     model_manager = ClassificationModelManager.from_checkpoint_path(checkpoint_path)
-    model_manager.load_model_state_dict(checkpoint["model_state_dict"])
     _log_model_summary(model_manager)
 
     data_preproc = get_augmentations(config.model.preprocessing)

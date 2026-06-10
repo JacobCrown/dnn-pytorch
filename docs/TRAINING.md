@@ -50,6 +50,13 @@ uv run python -m src.classification.test \
   eval_checkpoint=/absolute/path/to/checkpoints/best.pth
 ```
 
+Evaluate a saved segmentation checkpoint:
+
+```bash
+uv run dnn-test-segmentation \
+  eval_checkpoint=/absolute/path/to/checkpoints/best.pth
+```
+
 ### Optuna search
 
 ```bash

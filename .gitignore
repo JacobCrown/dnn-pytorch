@@ -30,6 +30,7 @@ last-training-*.txt
 # Segmentation Hydra: track composer + defaults + minimal smoke configs
 configs/segmentation/**
 !configs/segmentation/main.yaml
+!configs/segmentation/test.yaml
 !configs/segmentation/**/
 !configs/segmentation/**/default.yaml
 !configs/segmentation/**/minimal.yaml
