@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 from torchmetrics.functional.classification import multiclass_jaccard_index
 from tqdm import tqdm
 
+from src.common.experiment_paths import segmentation_experiment_root
 from src.common.logging import log_gpu_memory
 from src.common.utils import DEVICE
 from src.core.trainer import BaseTrainer
@@ -59,19 +60,15 @@ class SegmentationTrainer(
 
     def _get_root_dir_path(self) -> Path:
         """Get the path of the root directory."""
-        arch = self.cfg.model.architecture
-        model = self.cfg.model.encoder_name
-        height = self.cfg.model.height
-        width = self.cfg.model.width
-        epochs = self.cfg.train.epochs
-        bs = self.cfg.train.batch_size
-        dataset_path = Path(self.cfg.data.root)
-        dataset_name = dataset_path.name
-        return (
-            Path(self.cfg.train.root_dir)
-            / "segmentation"
-            / dataset_name
-            / f"{arch}_{model}_{height}x{width}_{epochs}epochs_{bs}bs"
+        return segmentation_experiment_root(
+            train_root_dir=self.cfg.train.root_dir,
+            data_root=self.cfg.data.root,
+            architecture=self.cfg.model.architecture,
+            encoder_name=self.cfg.model.encoder_name,
+            height=self.cfg.model.height,
+            width=self.cfg.model.width,
+            epochs=self.cfg.train.epochs,
+            batch_size=self.cfg.train.batch_size,
         )
 
     def _visualize_pre_train(self) -> None:
