@@ -9,19 +9,13 @@ from pathlib import Path
 from src.common.experiment_registry import (
     RunRecord,
     collect_run_records,
+    format_run_score,
     rank_run_records,
 )
 
 
 def _score(record: RunRecord) -> str:
-    metrics = record.metrics
-    if record.task_name == "classification" and metrics.get("best_val_accuracy") is not None:
-        return f"{float(metrics['best_val_accuracy']):.4f}"
-    if record.task_name == "segmentation" and metrics.get("best_val_iou") is not None:
-        return f"{float(metrics['best_val_iou']):.4f}"
-    if metrics.get("best_val_loss") is not None:
-        return f"loss={float(metrics['best_val_loss']):.4f}"
-    return "n/a"
+    return format_run_score(record)
 
 
 def _commands(record: RunRecord) -> tuple[str, str]:

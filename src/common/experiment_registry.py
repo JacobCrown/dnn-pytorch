@@ -74,7 +74,8 @@ def collect_run_records(paths: list[str | Path]) -> list[RunRecord]:
     return records
 
 
-def _score(record: RunRecord) -> float:
+def score_run_record(record: RunRecord) -> float:
+    """Return a comparable score for leaderboard ranking (higher is better)."""
     metrics = record.metrics
     if record.task_name == "classification" and metrics.get("best_val_accuracy") is not None:
         return float(metrics["best_val_accuracy"])
@@ -83,6 +84,24 @@ def _score(record: RunRecord) -> float:
     if metrics.get("best_val_loss") is not None:
         return -float(metrics["best_val_loss"])
     return float("-inf")
+
+
+def format_run_score(record: RunRecord) -> str:
+    """Format a run score for human-readable display."""
+    score = score_run_record(record)
+    if score == float("-inf"):
+        return "n/a"
+    if record.task_name == "segmentation" and record.metrics.get("best_val_iou") is not None:
+        return f"{score:.4f}"
+    if record.task_name == "classification" and record.metrics.get("best_val_accuracy") is not None:
+        return f"{score:.4f}"
+    if record.metrics.get("best_val_loss") is not None:
+        return f"loss={-score:.4f}"
+    return f"{score:.4f}"
+
+
+def _score(record: RunRecord) -> float:
+    return score_run_record(record)
 
 
 def rank_run_records(records: list[RunRecord]) -> list[RunRecord]:
