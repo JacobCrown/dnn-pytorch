@@ -22,6 +22,7 @@ configs/classification/**
 !configs/classification/test.yaml
 !configs/classification/**/
 !configs/classification/**/default.yaml
+!configs/classification/**/minimal.yaml
 
 # Local run notes
 last-training-*.txt

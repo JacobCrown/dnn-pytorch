@@ -1,128 +1,127 @@
 # dnn-pytorch
 
-`dnn-pytorch` is a Hydra-based PyTorch toolkit for learning and iterating on
-vision models. The active modules today are image classification and semantic
-segmentation; both use shared training utilities under `src/common` and base
-interfaces under `src/core`.
+Hydra-based PyTorch toolkit for image **classification** and semantic
+**segmentation**. Shared training utilities live under `src/common`; task-specific
+pipelines mirror each other in `src/classification` and `src/segmentation`.
 
-## What Works Today
+## Features
 
-- Classification training with timm backbones.
-- Segmentation training with segmentation-models-pytorch backbones.
-- Hydra config composition for data, model, training, and augmentations.
-- Local checkpoints, logs, and visualizations under `output/`.
-- Classification Optuna search and retraining from best trials.
-- Classification checkpoint evaluation with `src.classification.test`.
+- Classification (timm backbones) and segmentation (segmentation-models-pytorch)
+- Hydra config composition for data, model, augmentations, and training
+- Local checkpoints, logs, visualizations, and `run.json` experiment records
+- Local JSON tracking (`tracking/events.jsonl`) with optional W&B config stub
+- Experiment compare CLI (`dnn-compare`) and static HTML studio (`dnn-studio`)
+- ONNX export and local JSON inference CLIs for both tasks
+- Classification Optuna search and checkpoint evaluation
+- Mixed real/synthetic classification training (`data.real_root`)
 
-The project is intentionally local-first. Cloud tracking, distributed training,
-model export, experiment comparison, and serving are planned but not yet part of
-the stable workflow.
+See [docs/TRAINING.md](docs/TRAINING.md) for full training workflows.
 
 ## Install
 
-This project is managed with `uv` and targets Python 3.13 or newer.
+Requires Python 3.13+ and [uv](https://github.com/astral-sh/uv).
 
 ```bash
 uv sync
 ```
 
-Run the unit suite and linter before changing training code:
+Verify before changing training code:
 
 ```bash
 uv run pytest tests/unit -q
 uv run ruff check .
 ```
 
-## Classification
+End-to-end pipeline tests (synthetic data, ~few seconds):
 
-Train with the default classification config:
+```bash
+uv run pytest tests/integration -m integration -q
+```
+
+## Quick start
+
+Minimal classification smoke test (1 epoch, tiny model):
+
+```bash
+uv run python -m src.classification.main train=minimal model=minimal data.max_samples=20
+```
+
+Default classification training:
 
 ```bash
 uv run dnn-train-classification
 ```
 
-Override config groups or fields with Hydra syntax:
-
-```bash
-uv run dnn-train-classification model=default train=default data=default
-uv run dnn-train-classification model.name=resnet18 model.height=224 model.width=224
-```
-
-Run Optuna search and retrain the best trial:
-
-```bash
-uv run dnn-search-classification
-uv run dnn-train-best-classification
-```
-
-Evaluate a saved classification checkpoint:
-
-```bash
-uv run python -m src.classification.test \
-  eval_checkpoint=/absolute/path/to/output/classification/.../checkpoints/best.pth
-```
-
-Classification expects a folder-per-class layout:
-
-```text
-data/classification/<dataset>/
-  train/<class_name>/*.jpg
-  val/<class_name>/*.jpg
-  test/<class_name>/*.jpg
-```
-
-## Segmentation
-
-Train with the default segmentation config:
+Default segmentation training:
 
 ```bash
 uv run dnn-train-segmentation
 ```
 
-Segmentation expects image and mask folders per split:
+Compare local runs:
+
+```bash
+uv run dnn-compare output/
+uv run dnn-studio output/
+```
+
+## Data layouts
+
+**Classification** — folder per class:
+
+```text
+data/classification/<dataset>/
+  train/<class>/*
+  val/<class>/*
+  test/<class>/*
+```
+
+**Segmentation** — paired images and RGB masks:
 
 ```text
 data/segmentation/<dataset>/
-  train/images/*.png
-  train/masks/*.png
-  val/images/*.png
-  val/masks/*.png
-  test/images/*.png
-  test/masks/*.png
+  train/images/*   train/masks/*
+  val/images/*     val/masks/*
 ```
 
-Class colors and optional class merging are configured in
-`configs/segmentation/data/default.yaml`.
-
-## Outputs
-
-Training runs write artifacts to deterministic local directories:
+## Run outputs
 
 ```text
-output/classification/<dataset>/<model>_<height>x<width>_<epochs>epochs_<batch>bs/
-output/segmentation/<dataset>/<architecture>_<encoder>_<height>x<width>_<epochs>epochs_<batch>bs/
+output/classification/<dataset>/<model>_<HxW>_<epochs>epochs_<batch>bs/
+output/segmentation/<dataset>/<arch>_<encoder>_<HxW>_<epochs>epochs_<batch>bs/
 ```
 
-Each run may include:
+Each run includes checkpoints, `logs/main.log`, `run.json`, and (by default)
+local tracking events.
 
-- `checkpoints/last.pth`
-- `checkpoints/best.pth`
-- `checkpoints/predictor.pth` for classification inference
-- `logs/run.log`
-- `visualizations/*.png`
+## Console scripts
 
-## Extension Points
+| Command | Purpose |
+|---------|---------|
+| `dnn-train-classification` | Train classifier |
+| `dnn-train-segmentation` | Train segmenter |
+| `dnn-search-classification` | Optuna hyperparameter search |
+| `dnn-train-best-classification` | Retrain best Optuna trial |
+| `dnn-compare` | Rank runs from `run.json` files |
+| `dnn-studio` | HTML experiment leaderboard |
+| `dnn-export-classification` / `dnn-export-segmentation` | ONNX export |
+| `dnn-serve-classification` / `dnn-serve-segmentation` | Local JSON inference |
 
-- Add new augmentations through `src/common/augmentations.py` and YAML config.
-- Add losses, optimizers, and schedulers through `src/common`.
-- Add new model families by implementing a task model manager.
-- Add new tasks by following the package shape in `src/classification` and
-  `src/segmentation`.
+## Extension points
 
-## Known Gaps
+- Augmentations: `src/common/augmentations.py` + YAML
+- Losses, optimizers, schedulers: `src/common`
+- New tasks: follow `src/classification` / `src/segmentation` package shape
 
-- Segmentation orchestration is still concentrated in `src/segmentation/main.py`.
-- There is no distributed training strategy yet.
-- ONNX dependencies are installed, but no export CLI exists yet.
-- W&B is available but normal training does not use a tracking abstraction yet.
-- There is no local experiment comparison, model registry, or serving layer yet.
+## Project layout
+
+```text
+configs/          Hydra YAML for each task
+src/classification/
+src/segmentation/
+src/common/       Shared pipelines, tracking, export, experiment registry
+src/core/         Base trainer, dataset, metrics
+tests/unit/       Fast unit tests
+tests/integration/ End-to-end training on synthetic data
+docs/             Training and workflow documentation
+```
