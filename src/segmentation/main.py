@@ -23,7 +23,9 @@ logger = logging.getLogger(__name__)
     config_name="main.yaml",
 )
 def main(cfg: dict) -> None:
-    config = SegmentationConfig.from_dict(dict(cfg))
+    config = SegmentationConfig.from_dict(
+        OmegaConf.to_container(cfg, resolve=True, throw_on_missing=False)  # type: ignore[arg-type]
+    )
     experiment_dir = segmentation_experiment_root(
         train_root_dir=config.train.root_dir,
         data_root=config.data.root,

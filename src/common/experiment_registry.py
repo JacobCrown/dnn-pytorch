@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from src.common.serialization import to_plain_python
 from src.common.training_contracts import TrainingArtifacts
 
 RUN_RECORD_NAME = "run.json"
@@ -23,18 +24,6 @@ class RunRecord:
     used_validation: bool
 
 
-def _jsonable(value: Any) -> Any:
-    if isinstance(value, Path):
-        return str(value)
-    if is_dataclass(value) and not isinstance(value, type):
-        return _jsonable(asdict(value))
-    if isinstance(value, dict):
-        return {str(key): _jsonable(item) for key, item in value.items()}
-    if isinstance(value, list | tuple):
-        return [_jsonable(item) for item in value]
-    return value
-
-
 def write_run_record(
     *,
     task_name: str,
@@ -47,9 +36,9 @@ def write_run_record(
     record = {
         "task_name": task_name,
         "run_dir": str(artifacts.root_dir),
-        "metrics": _jsonable(metrics),
-        "artifacts": _jsonable(artifacts),
-        "config": _jsonable(config),
+        "metrics": to_plain_python(metrics),
+        "artifacts": to_plain_python(artifacts),
+        "config": to_plain_python(config),
         "used_validation": used_validation,
     }
     record_path = artifacts.root_dir / RUN_RECORD_NAME

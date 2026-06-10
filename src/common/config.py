@@ -11,6 +11,9 @@ from types import UnionType
 from typing import Any, TypeVar, Union, get_args, get_origin, get_type_hints
 
 import yaml
+from omegaconf import OmegaConf
+
+from src.common.serialization import to_plain_python
 
 T = TypeVar("T", bound="BaseConfig")
 
@@ -24,7 +27,7 @@ class BaseConfig:
 
     def to_dict(self) -> dict[str, Any]:
         """Return the config as a plain Python dict."""
-        return asdict(self)  # type: ignore[arg-type]
+        return to_plain_python(asdict(self))  # type: ignore[arg-type]
 
     def to_yaml(self, yaml_path: str | Path) -> None:
         """Serialise this configuration object to a YAML file."""
@@ -47,6 +50,13 @@ class BaseConfig:
 # --- Private recursive helper ---
 
 
+def _coerce_config_value(value: Any) -> Any:
+    """Convert Hydra/OmegaConf containers into plain Python values."""
+    if OmegaConf.is_config(value):
+        return OmegaConf.to_container(value, resolve=True, throw_on_missing=False)
+    return value
+
+
 def _from_dict_recursive[T: "BaseConfig"](cls: type[T], data: dict[str, Any]) -> T:
     """Recursive builder that correctly handles nested dataclasses."""
     if not is_dataclass(cls):
@@ -55,12 +65,13 @@ def _from_dict_recursive[T: "BaseConfig"](cls: type[T], data: dict[str, Any]) ->
     if data is None:
         return None  # type: ignore
 
+    data = _coerce_config_value(data)
     type_hints = get_type_hints(cls)
     kwargs: dict[str, Any] = {}
     for f in fields(cls):
         if f.name not in data:
             continue
-        raw_value = data[f.name]
+        raw_value = _coerce_config_value(data[f.name])
 
         field_type = type_hints.get(f.name, f.type)
         target_type = _resolve_optional_type(field_type)

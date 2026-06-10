@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
 from src.common.config import TrackingConfig
+from src.common.serialization import to_plain_python
 
 logger = logging.getLogger(__name__)
 
@@ -19,18 +19,6 @@ class Tracker(Protocol):
     def log_artifact(self, name: str, path: str | Path) -> None: ...
 
     def close(self) -> None: ...
-
-
-def _jsonable(value: Any) -> Any:
-    if isinstance(value, Path):
-        return str(value)
-    if is_dataclass(value) and not isinstance(value, type):
-        return _jsonable(asdict(value))
-    if isinstance(value, dict):
-        return {str(key): _jsonable(item) for key, item in value.items()}
-    if isinstance(value, list | tuple):
-        return [_jsonable(item) for item in value]
-    return value
 
 
 class LocalJsonTracker:
@@ -46,7 +34,7 @@ class LocalJsonTracker:
     def _write_event(self, payload: dict[str, Any]) -> None:
         payload["task_name"] = self.task_name
         with self.events_path.open("a", encoding="utf-8") as fp:
-            fp.write(json.dumps(_jsonable(payload), sort_keys=True) + "\n")
+            fp.write(json.dumps(to_plain_python(payload), sort_keys=True) + "\n")
 
     def log_metrics(self, metrics: dict[str, Any], step: int | None = None) -> None:
         self._write_event({"type": "metrics", "step": step, "metrics": metrics})
