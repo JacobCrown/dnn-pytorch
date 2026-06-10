@@ -10,6 +10,7 @@ small model, no AMP):
 
 ```bash
 uv run python -m src.classification.main train=minimal model=minimal data.max_samples=20
+uv run python -m src.segmentation.main train=minimal model=minimal data.max_samples=10
 ```
 
 Integration tests under `tests/integration/` run the same pipelines on synthetic
@@ -124,7 +125,8 @@ Segmentation equivalents: `dnn-export-segmentation`, `dnn-serve-segmentation`.
 ## Tracking
 
 Local JSON tracking is enabled by default (`train.tracking.local_enabled=true`).
-Each metric log and artifact reference is appended to `tracking/events.jsonl`.
+Each epoch appends metrics to `tracking/events.jsonl`; a final summary is logged
+after training completes.
 
 Optional W&B is configured via `train.tracking.wandb_enabled=true` and
 `wandb_project`. When W&B is enabled but not fully wired, the pipeline falls

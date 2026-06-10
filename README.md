@@ -46,6 +46,12 @@ Minimal classification smoke test (1 epoch, tiny model):
 uv run python -m src.classification.main train=minimal model=minimal data.max_samples=20
 ```
 
+Minimal segmentation smoke test:
+
+```bash
+uv run python -m src.segmentation.main train=minimal model=minimal data.max_samples=10
+```
+
 Default classification training:
 
 ```bash

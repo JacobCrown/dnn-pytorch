@@ -1,0 +1,20 @@
+architecture: Unet
+encoder_name: resnet18
+encoder_weights: null
+height: 64
+width: 64
+in_channels: 3
+classes: 2
+params: {}
+preprocessing:
+  - name: Resize
+    params:
+      height: 64
+      width: 64
+  - name: Normalize
+    params:
+      mean: [0.5, 0.5, 0.5]
+      std: [0.25, 0.25, 0.25]
+  - name: ToTensorV2
+    params:
+      transpose_mask: true
