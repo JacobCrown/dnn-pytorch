@@ -17,11 +17,18 @@ def test_classification_response_contains_label_and_task() -> None:
     }
 
 
-def test_segmentation_response_contains_mask_shape() -> None:
-    response = segmentation_response(mask_shape=(1, 1, 64, 64), image_path="image.png")
+def test_segmentation_response_contains_mask_shape_and_counts() -> None:
+    response = segmentation_response(
+        mask_shape=(1, 64, 64),
+        image_path="image.png",
+        output_mask_path="/tmp/mask.png",
+        class_pixel_counts={"road": 100, "sky": 200},
+    )
 
     assert response["task"] == "segmentation"
-    assert response["mask_shape"] == [1, 1, 64, 64]
+    assert response["mask_shape"] == [1, 64, 64]
+    assert response["output_mask_path"] == "/tmp/mask.png"
+    assert response["class_pixel_counts"] == {"road": 100, "sky": 200}
 
 
 def test_to_json_outputs_sorted_json() -> None:

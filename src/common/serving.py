@@ -18,12 +18,19 @@ def segmentation_response(
     *,
     mask_shape: tuple[int, ...],
     image_path: str,
+    output_mask_path: str | None = None,
+    class_pixel_counts: dict[str, int] | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "task": "segmentation",
         "image_path": image_path,
         "mask_shape": list(mask_shape),
     }
+    if output_mask_path is not None:
+        payload["output_mask_path"] = output_mask_path
+    if class_pixel_counts is not None:
+        payload["class_pixel_counts"] = class_pixel_counts
+    return payload
 
 
 def to_json(payload: dict[str, Any]) -> str:

@@ -129,6 +129,12 @@ uv run dnn-serve-classification output/.../checkpoints/predictor.pth image.jpg
 
 Segmentation equivalents: `dnn-export-segmentation`, `dnn-serve-segmentation`.
 
+Serve segmentation with mask export:
+
+```bash
+uv run dnn-serve-segmentation checkpoints/best.pth image.jpg --output-mask prediction.png
+```
+
 ## Tracking
 
 Local JSON tracking is enabled by default (`train.tracking.local_enabled=true`).
