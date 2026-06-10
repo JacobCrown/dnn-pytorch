@@ -1,16 +1,16 @@
-import pytest
 from pathlib import Path
-import yaml
-from typing import List
 
-from src.common.config import AugmentationConfig
+import pytest
+import yaml
+
 from src.common.augmentations import get_augmentations
+from src.common.config import AugmentationConfig
 
 
 @pytest.fixture
-def augmentations() -> List[AugmentationConfig]:
+def augmentations() -> list[AugmentationConfig]:
     assets_path = Path(__file__).parent / "assets" / "augmentations.yaml"
-    with open(assets_path, "r") as f:
+    with open(assets_path) as f:
         return [AugmentationConfig.from_dict(aug) for aug in yaml.safe_load(f)]
 
 
