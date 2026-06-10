@@ -19,6 +19,7 @@ from src.common.data_utils import create_data_loaders
 from src.common.losses import get_loss_function
 from src.common.optimizers import get_optimizer
 from src.common.schedulers import get_scheduler
+from src.common.training_contracts import TrainingArtifacts
 
 logger = logging.getLogger(__name__)
 
@@ -53,11 +54,21 @@ class ClassificationTrainingMetrics:
 class ClassificationTrainingOutcome:
     """Paths after a completed training run (Hydra cwd is typically outputs/...)."""
 
-    checkpoints_dir: Path
-    best_checkpoint_path: Path | None
-    predictor_checkpoint_path: Path | None
+    artifacts: TrainingArtifacts
     metrics: ClassificationTrainingMetrics
     used_validation: bool
+
+    @property
+    def checkpoints_dir(self) -> Path:
+        return self.artifacts.checkpoints_dir
+
+    @property
+    def best_checkpoint_path(self) -> Path | None:
+        return self.artifacts.best_checkpoint_path
+
+    @property
+    def predictor_checkpoint_path(self) -> Path | None:
+        return self.artifacts.predictor_checkpoint_path
 
 
 def apply_num_classes_from_train_dataset(
@@ -300,13 +311,13 @@ def run_classification_training(
 
     trainer.train()
 
-    ckpt_dir = trainer.checkpoints_dir
-    best = ckpt_dir / "best.pth"
-    predictor = ckpt_dir / "predictor.pth"
     return ClassificationTrainingOutcome(
-        checkpoints_dir=ckpt_dir,
-        best_checkpoint_path=best if best.exists() else None,
-        predictor_checkpoint_path=predictor if predictor.exists() else None,
+        artifacts=TrainingArtifacts.from_completed_run(
+            trainer.root_dir,
+            checkpoints_dir_name=config.train.checkpoints_dir,
+            logs_dir_name=config.train.logs_dir,
+            visualizations_dir_name=config.train.visualize_dir,
+        ),
         metrics=_collect_training_metrics(trainer),
         used_validation=data_pipeline.val_loader is not None,
     )
