@@ -157,6 +157,15 @@ class TrackingConfig(BaseConfig):
 
 
 @dataclass
+class DistributedTrainingConfig(BaseConfig):
+    """Distributed training strategy settings."""
+
+    strategy: str = "single"
+    backend: str = "nccl"
+    find_unused_parameters: bool = False
+
+
+@dataclass
 class BaseDataConfig(BaseConfig):
     """Configuration for data loading and preprocessing."""
 
@@ -215,6 +224,11 @@ class BaseTrainingConfig(BaseConfig):
 
     # Tracking
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
+
+    # Distributed strategy
+    distributed: DistributedTrainingConfig = field(
+        default_factory=DistributedTrainingConfig
+    )
 
     # Root directory for output files
     root_dir: str = "output"
