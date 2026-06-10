@@ -168,8 +168,11 @@ class SegmentationTrainer(
                     torch.nn.utils.clip_grad_norm_(
                         self.model.parameters(), self.grad_clip
                     )
+                scale_before_step = self.scaler.get_scale()
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
+                if self.scaler.get_scale() >= scale_before_step:
+                    self._after_optimizer_step()
             else:
                 loss.backward()
                 if self.grad_clip is not None:
@@ -177,6 +180,7 @@ class SegmentationTrainer(
                         self.model.parameters(), self.grad_clip
                     )
                 self.optimizer.step()
+                self._after_optimizer_step()
 
             total_loss += loss
 
