@@ -14,6 +14,7 @@ from torchinfo import summary
 from src.common.augmentations import get_augmentations
 from src.common.data_utils import create_data_loaders
 from src.common.exceptions import DataLoaderException
+from src.common.experiment_registry import write_run_record
 from src.common.losses import get_loss_function
 from src.common.optimizers import get_optimizer
 from src.common.schedulers import get_scheduler
@@ -275,7 +276,7 @@ def run_segmentation_training(
     logger.info("Starting training for %d epochs", config.train.epochs)
     trainer.train()
 
-    return SegmentationTrainingOutcome(
+    outcome = SegmentationTrainingOutcome(
         artifacts=TrainingArtifacts.from_completed_run(
             trainer.root_dir,
             checkpoints_dir_name=config.train.checkpoints_dir,
@@ -285,3 +286,11 @@ def run_segmentation_training(
         metrics=_collect_training_metrics(trainer),
         used_validation=True,
     )
+    write_run_record(
+        task_name="segmentation",
+        artifacts=outcome.artifacts,
+        metrics=outcome.metrics,
+        config=config.to_dict(),
+        used_validation=outcome.used_validation,
+    )
+    return outcome

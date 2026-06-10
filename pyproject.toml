@@ -67,6 +67,7 @@ dnn-search-classification = "src.classification.optuna_search:main"
 dnn-train-best-classification = "src.classification.train_best:main"
 dnn-train-classification = "src.classification.main:main"
 dnn-train-segmentation = "src.segmentation.main:main"
+dnn-compare = "src.common.experiment_registry:main"
 
 [tool.ruff]
 line-length = 88

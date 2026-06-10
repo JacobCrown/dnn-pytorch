@@ -16,6 +16,7 @@ from src.classification.model_manager import ClassificationModelManager
 from src.classification.trainer import ClassificationTrainer
 from src.common.augmentations import get_augmentations
 from src.common.data_utils import create_data_loaders
+from src.common.experiment_registry import write_run_record
 from src.common.losses import get_loss_function
 from src.common.optimizers import get_optimizer
 from src.common.schedulers import get_scheduler
@@ -311,7 +312,7 @@ def run_classification_training(
 
     trainer.train()
 
-    return ClassificationTrainingOutcome(
+    outcome = ClassificationTrainingOutcome(
         artifacts=TrainingArtifacts.from_completed_run(
             trainer.root_dir,
             checkpoints_dir_name=config.train.checkpoints_dir,
@@ -321,3 +322,11 @@ def run_classification_training(
         metrics=_collect_training_metrics(trainer),
         used_validation=data_pipeline.val_loader is not None,
     )
+    write_run_record(
+        task_name="classification",
+        artifacts=outcome.artifacts,
+        metrics=outcome.metrics,
+        config=config.to_dict(),
+        used_validation=outcome.used_validation,
+    )
+    return outcome
