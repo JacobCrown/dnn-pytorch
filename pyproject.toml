@@ -70,6 +70,8 @@ dnn-train-segmentation = "src.segmentation.main:main"
 dnn-compare = "src.common.experiment_registry:main"
 dnn-export-classification = "src.classification.export:main"
 dnn-export-segmentation = "src.segmentation.export:main"
+dnn-serve-classification = "src.classification.serve:main"
+dnn-serve-segmentation = "src.segmentation.serve:main"
 
 [tool.ruff]
 line-length = 88
