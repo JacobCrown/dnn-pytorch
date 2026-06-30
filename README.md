@@ -13,7 +13,6 @@ pipelines mirror each other in `src/classification` and `src/segmentation`.
 - Experiment compare CLI (`dnn-compare`) and static HTML studio (`dnn-studio`)
 - ONNX export and local JSON inference CLIs for both tasks
 - Classification Optuna search and checkpoint evaluation
-- Mixed real/synthetic classification training (`data.real_root`)
 
 See [docs/TRAINING.md](docs/TRAINING.md) for full training workflows.
 

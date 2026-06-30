@@ -8,9 +8,5 @@ extensions: [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
 # Use null for full datasets; set an integer only while debugging.
 max_samples: null
 
-# Mixed real/synthetic training (optional).
-real_root: null
-real_train_dir: "train"
-
 # Merge multiple class folders into one label (optional).
 class_mapping: null

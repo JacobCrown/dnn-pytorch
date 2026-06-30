@@ -32,14 +32,14 @@ data/classification/<dataset>/
   test/<class_name>/*
 ```
 
-`ClassificationDataset` discovers classes from folder names. Optional `class_mapping` merges source folders into one label (see `configs/classification/data/default.yaml`). Mixed real/synthetic training uses `data.real_root` + `data.real_train_dir`.
+`ClassificationDataset` discovers classes from folder names. Optional `class_mapping` merges source folders into one label (see `configs/classification/data/default.yaml`).
 
 ## Key modules
 
 | File | Role |
 |------|------|
 | `config.py` | Dataclass configs (`ClassificationConfig`, `ClassificationTestConfig`) |
-| `dataset.py` | Folder-per-class dataset and mixed-train builder |
+| `dataset.py` | Folder-per-class dataset |
 | `model_manager.py` | timm model construction, freeze policy, checkpoint loading |
 | `training_pipeline.py` | Datasets → trainer → checkpoints → `run.json` |
 | `trainer.py` | Epoch loop, AMP, EMA, predictor checkpoint export |
