@@ -1,25 +1,16 @@
-root: "data/classification/"
-train_dir: "synthetic_roadsign_data"
-val_dir: "polish_dataset_train"
-test_dir: "polish_dataset_test"
+# Default dataset: CIFAR-100 folder-per-class layout under data/classification/cifar100/
+root: "data/classification/cifar100"
+train_dir: "train"
+val_dir: "test"
+test_dir: "test"
 extensions: [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
-# For debugging purposes, optional
+
+# Use null for full datasets; set an integer only while debugging.
 max_samples: null
 
-# Merge multiple class folders (names must match subdirs under train/val/test) into one training label.
-# Set to null when not used.
+# Mixed real/synthetic training (optional).
+real_root: null
+real_train_dir: "train"
+
+# Merge multiple class folders into one label (optional).
 class_mapping: null
-# Example:
-# class_mapping:
-#   - name: Car
-#     map_classes:
-#       - Car 1
-#       - Car 2
-#       - Car 3
-#       - Car 4
-#   - name: Bicycle
-#     map_classes:
-#       - Bicycle 1
-#       - Bicycle 2
-#       - Bicycle 3
-#       - Bicycle 4

@@ -27,7 +27,8 @@ data/classification/<dataset>/
   test/<class_name>/*.{jpg,png,...}   # optional
 ```
 
-Set `data.max_samples` to cap samples per split while debugging.
+Set `data.max_samples` to cap samples per split while debugging. Defaults target
+`data/classification/cifar100` (see `configs/classification/data/default.yaml`).
 
 ### Train
 

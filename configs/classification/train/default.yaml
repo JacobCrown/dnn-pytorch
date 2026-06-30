@@ -11,66 +11,52 @@ prefetch_factor: 2
 drop_last: false
 
 optimizer:
-  name: AdamW  # options: Adam, AdamW, SGD
+  name: AdamW
   params:
     lr: 0.001
     weight_decay: 0.0001
 
-# LR scheduler
+# T_max should match epochs for a full cosine cycle.
 scheduler:
-  name: CosineAnnealingLR   # options: CosineAnnealingLR, StepLR, ReduceLROnPlateau, None
+  name: CosineAnnealingLR
   params:
-    T_max: 100
+    T_max: 5
     eta_min: 0.0001
-
-# Loss function
-# loss_function:
-#   - name: SoftCrossEntropyLoss
-#     weight: 1.0
-#     params:
 
 loss_function:
   - name: FocalLoss
-    weight: 0.65
+    weight: 1.0
     params:
-      mode: "multiclass"
+      mode: multiclass
       gamma: 2.0
-  
-  - name: DiceLoss
-    weight: 0.35
-    params:
-      mode: "multiclass"
-      ignore_index: 255
-      smooth: 1e-6
 
-# Mixed precision
 use_amp: true
-
-# Gradient clipping (null disables)
 gradient_clip: null
 
-# Exponential moving average of model weights
 ema:
   enabled: false
   decay: 0.9999
   update_after_step: 0
   update_every: 1
 
-# Resume from checkpoint path
-resume_from_checkpoint: null
-# Run test evaluation with:
-# python -m src.classification.test model=default \
-#   eval_checkpoint="/abs/path/to/checkpoints/best.pth"
+tracking:
+  local_enabled: true
+  wandb_enabled: false
+  wandb_project: null
+  tags: []
 
-# Early stopping
+distributed:
+  strategy: single
+  backend: nccl
+  find_unused_parameters: false
+
+resume_from_checkpoint: null
 early_stopping_patience: 10
 
-# Root directory for output files
 root_dir: "output"
 checkpoints_dir: "checkpoints"
 logs_dir: "logs"
 visualize_dir: "visualizations"
 
-# visualization flags
 visualize_pre_train: false
 visualize_post_train: false
