@@ -13,14 +13,9 @@ def iterate_with_progress[T](
 ) -> Iterator[T]:
     """Iterate with a Rich bar showing elapsed time and ETA (stderr, aligns with logging)."""
     from rich.console import Console
-    from rich.progress import (
-        BarColumn,
-        Progress,
-        TaskProgressColumn,
-        TextColumn,
-        TimeElapsedColumn,
-        TimeRemainingColumn,
-    )
+    from rich.progress import (BarColumn, Progress, TaskProgressColumn,
+                               TextColumn, TimeElapsedColumn,
+                               TimeRemainingColumn)
 
     progress = Progress(
         TextColumn("[progress.description]{task.description}"),

@@ -1,19 +1,14 @@
 from dataclasses import asdict, dataclass, field
 from typing import Any, Self
 
+from src.common.metrics import LossMetrics
+
 
 @dataclass
 class BaseMetrics:
     """Base metrics class for all tasks."""
 
-    losses: dict[str, list[float]] = field(default_factory=dict)
-
-    def __post_init__(self):
-        self.losses = {
-            "train": [],
-            "val": [],
-            "test": [],
-        }
+    losses: LossMetrics = field(default_factory=LossMetrics)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert the metrics instance to a dictionary."""

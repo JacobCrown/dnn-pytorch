@@ -31,6 +31,7 @@ dependencies = [
   "optuna>=4.8.0",
   "rich>=15.0.0",
   "wandb>=0.26.1",
+  "isort>=8.0.1",
 ]
 
 [tool.uv.sources]

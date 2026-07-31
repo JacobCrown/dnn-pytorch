@@ -1,7 +1,7 @@
 # Geometric transforms
-# - name: HorizontalFlip
-#   params:
-#     p: 0.5
+- name: HorizontalFlip
+  params:
+    p: 0.5
 
 # - name: VerticalFlip
 #   params:

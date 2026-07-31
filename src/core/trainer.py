@@ -55,7 +55,7 @@ class BaseTrainer[
         self.model_manager: ModelManagerType = model_manager
         self.model: nn.Module = self.model_manager.model.to(DEVICE)
         self.train_loader: DataLoader = train_loader
-        self.val_loader: DataLoader | None = val_loader
+        self.val_loader: DataLoader = val_loader
         self.test_loader: DataLoader | None = test_loader
         self.train_cfg: BaseTrainingConfig = cfg
         self.root_dir: Path = self._get_root_dir_path()

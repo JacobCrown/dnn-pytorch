@@ -10,11 +10,8 @@ import torch
 
 from src.core.dataset import BaseDataset
 from src.segmentation.config import ClassConfig, ClassMappingConfig
-from src.segmentation.mask_utils import (
-    build_lookup_table,
-    find_mask_file,
-    prepare_masks,
-)
+from src.segmentation.mask_utils import (build_lookup_table, find_mask_file,
+                                         prepare_masks)
 
 logger = logging.getLogger(__name__)
 

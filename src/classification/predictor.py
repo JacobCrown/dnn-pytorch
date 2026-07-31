@@ -37,7 +37,6 @@ class ClassificationPredictor:
         model = timm.create_model(
             model_name=model_config["name"],
             num_classes=int(model_config["num_classes"]),
-            pretrained=model_config["pretrained"],
             in_chans=int(model_config["in_channels"]),
             drop_rate=float(model_config["dropout"]),
         )

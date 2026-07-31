@@ -15,10 +15,10 @@ from torch.amp import autocast  # type: ignore[reportMissingImports]
 from torch.utils.data import DataLoader
 
 from src.classification.dataset import ClassificationDataset
+from src.classification.metrics import ClassificationMetrics
 from src.common.logging import artifact_rel_to_experiment
 from src.common.progress_tools import iterate_with_progress
 from src.common.utils import DEVICE
-from src.core.metrics import BaseMetrics
 from src.core.visualizer import BaseVisualizer
 
 logger = logging.getLogger(__name__)
@@ -525,7 +525,7 @@ class ClassificationVisualizer(BaseVisualizer):
 
     def visualize_metrics(
         self,
-        metrics: BaseMetrics,
+        metrics: ClassificationMetrics,
         data_loader: DataLoader | None = None,
         model: nn.Module | None = None,
         use_amp: bool = False,
@@ -545,8 +545,7 @@ class ClassificationVisualizer(BaseVisualizer):
         # Plot training curves
         self._plot_loss_curves(metrics, figsize_curves)
 
-        if hasattr(metrics, "accuracies"):
-            self._plot_accuracy_curves(metrics, figsize_curves)
+        self._plot_accuracy_curves(metrics, figsize_curves)
 
         # Plot confusion matrix if data and model are provided
         if data_loader is not None and model is not None:
@@ -717,7 +716,7 @@ class ClassificationVisualizer(BaseVisualizer):
         logger.info("[viz] wrote %s", self._artifact_rel(save_path))
 
     def _plot_loss_curves(
-        self, metrics: BaseMetrics, figsize: tuple[float, float]
+        self, metrics: ClassificationMetrics, figsize: tuple[float, float]
     ) -> None:
         """Plot loss curves.
 
@@ -727,9 +726,9 @@ class ClassificationVisualizer(BaseVisualizer):
         """
         _, ax = plt.subplots(figsize=figsize)
 
-        for key, values in metrics.losses.items():
-            if values:
-                ax.plot(values, label=f"{key.capitalize()} Loss", linewidth=2)
+        ax.plot(metrics.losses.train, label="Train Loss", linewidth=2)
+        ax.plot(metrics.losses.val, label="Validation Loss", linewidth=2)
+        ax.plot(metrics.losses.test, label="Test Loss", linewidth=2)
 
         ax.set_title("Training and Validation Loss", fontsize=14, fontweight="bold")
         ax.set_xlabel("Epoch", fontsize=12)
@@ -744,7 +743,7 @@ class ClassificationVisualizer(BaseVisualizer):
         logger.debug(f"Loss curves saved to {save_path}")
 
     def _plot_accuracy_curves(
-        self, metrics: BaseMetrics, figsize: tuple[float, float]
+        self, metrics: ClassificationMetrics, figsize: tuple[float, float]
     ) -> None:
         """Plot accuracy curves.
 
@@ -754,10 +753,10 @@ class ClassificationVisualizer(BaseVisualizer):
         """
         _, ax = plt.subplots(figsize=figsize)
 
-        accuracies = getattr(metrics, "accuracies", {})
-        for key, values in accuracies.items():
-            if values:
-                ax.plot(values, label=f"{key.capitalize()} Accuracy", linewidth=2)
+        accuracies = metrics.accuracies
+        ax.plot(accuracies.train, label="Train Accuracy", linewidth=2)
+        ax.plot(accuracies.val, label="Validation Accuracy", linewidth=2)
+        ax.plot(accuracies.test, label="Test Accuracy", linewidth=2)
 
         ax.set_title("Training and Validation Accuracy", fontsize=14, fontweight="bold")
         ax.set_xlabel("Epoch", fontsize=12)

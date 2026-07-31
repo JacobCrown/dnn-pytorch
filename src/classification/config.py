@@ -2,13 +2,8 @@
 
 from dataclasses import dataclass, field
 
-from src.common.config import (
-    AugmentationConfig,
-    BaseConfig,
-    BaseDataConfig,
-    BaseTrainingConfig,
-)
-from src.common.hpo import OptunaConfig
+from src.common.config import (AugmentationConfig, BaseConfig, BaseDataConfig,
+                               BaseTrainingConfig)
 
 
 @dataclass
@@ -50,7 +45,6 @@ class ClassificationConfig(BaseConfig):
     train: BaseTrainingConfig = field(default_factory=BaseTrainingConfig)
     augmentations: list[AugmentationConfig] = field(default_factory=list)
     data: ClassificationDataConfig = field(default_factory=ClassificationDataConfig)
-    optuna: OptunaConfig = field(default_factory=OptunaConfig)
 
 
 @dataclass

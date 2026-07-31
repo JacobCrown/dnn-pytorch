@@ -1,10 +1,11 @@
-import pytest
 from pathlib import Path
-import yaml
 from typing import List
 
-from src.common.config import AugmentationConfig
+import pytest
+import yaml
+
 from src.common.augmentations import get_augmentations
+from src.common.config import AugmentationConfig
 
 
 @pytest.fixture

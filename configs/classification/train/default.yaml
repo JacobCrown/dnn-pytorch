@@ -2,13 +2,13 @@
 epochs: 5
 batch_size: 256
 num_workers: 4
-pin_memory: false
+pin_memory: true
 shuffle: true
 
 # DataLoader performance knobs
-persistent_workers: false
-prefetch_factor: 2
-drop_last: false
+persistent_workers: true
+prefetch_factor: 1
+drop_last: true
 
 optimizer:
   name: AdamW  # options: Adam, AdamW, SGD
@@ -22,12 +22,6 @@ scheduler:
   params:
     T_max: 100
     eta_min: 0.0001
-
-# Loss function
-# loss_function:
-#   - name: SoftCrossEntropyLoss
-#     weight: 1.0
-#     params:
 
 loss_function:
   - name: FocalLoss
@@ -72,5 +66,5 @@ logs_dir: "logs"
 visualize_dir: "visualizations"
 
 # visualization flags
-visualize_pre_train: false
-visualize_post_train: false
+visualize_pre_train: true
+visualize_post_train: true

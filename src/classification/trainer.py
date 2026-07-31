@@ -1,15 +1,12 @@
 """Trainer for classification models."""
 
 import logging
-from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from sklearn.metrics import classification_report, confusion_matrix
-from torch.amp import autocast  # type: ignore[reportMissingImports]
+from torch import autocast
 from torch.utils.data import DataLoader
 
 from src.classification.config import ClassificationConfig
@@ -17,106 +14,13 @@ from src.classification.metrics import ClassificationMetrics
 from src.classification.model_manager import ClassificationModelManager
 from src.classification.visualizer import ClassificationVisualizer
 from src.common.experiment_paths import classification_experiment_root
-from src.common.logging import (
-    artifact_rel_to_experiment,
-    gpu_epoch_log_suffix,
-)
+from src.common.logging import artifact_rel_to_experiment, gpu_epoch_log_suffix
 from src.common.progress_tools import iterate_with_progress
 from src.common.utils import DEVICE
 from src.core.trainer import BaseTrainer
+from src.classification.evaluate import evaluate_classification_model
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class ClassificationEvaluationSummary:
-    loss: float
-    accuracy: float
-    correct: int
-    total: int
-    predictions: list[int]
-    targets: list[int]
-    confusion_matrix: np.ndarray
-    classification_report: str
-
-
-def evaluate_classification_model(
-    model: nn.Module,
-    data_loader: DataLoader,
-    criterion: nn.Module,
-    use_amp: bool,
-    class_names: list[str],
-    split_name: str = "Test",
-) -> ClassificationEvaluationSummary:
-    """Evaluate a classification model and log aggregate statistics."""
-    model = model.to(DEVICE)
-    model.eval()
-
-    total_loss = torch.tensor(0.0, device=DEVICE)
-    correct = torch.tensor(0.0, device=DEVICE, dtype=torch.int64)
-    total = torch.tensor(0.0, device=DEVICE, dtype=torch.int64)
-    predictions: list[int] = []
-    targets: list[int] = []
-    labels = list(range(len(class_names)))
-
-    with torch.inference_mode():
-        for data, target in iterate_with_progress(
-            data_loader,
-            description=f"Eval · {split_name}",
-            transient=True,
-        ):
-            data, target = data.to(DEVICE), target.to(DEVICE)
-
-            with autocast(device_type=DEVICE, enabled=use_amp):
-                output = model(data)
-                loss = criterion(output, target)
-
-            pred = output.argmax(dim=1)
-            correct += pred.eq(target).sum()
-            total += target.size(0)
-            total_loss += loss
-            predictions.extend(pred.cpu().tolist())
-            targets.extend(target.cpu().tolist())
-
-    total_count = int(total.item())
-    if total_count == 0:
-        raise ValueError(f"{split_name} data loader is empty; cannot compute metrics")
-
-    accuracy = 100.0 * (correct / total).item()
-    avg_loss = total_loss.item() / len(data_loader)
-    cm = confusion_matrix(targets, predictions, labels=labels)
-    report = classification_report(
-        targets,
-        predictions,
-        labels=labels,
-        target_names=class_names,
-        digits=4,
-        zero_division=0,
-    )
-
-    logger.info(
-        "%s | loss=%.4f acc=%.2f%% correct=%d/%d | cm(shape=%s diagonal=%d/%d)",
-        split_name,
-        avg_loss,
-        accuracy,
-        int(correct.item()),
-        total_count,
-        cm.shape,
-        int(cm.trace()),
-        int(cm.sum()),
-    )
-    logger.debug("%s classification report:\n%s", split_name, report)
-
-    return ClassificationEvaluationSummary(
-        loss=avg_loss,
-        accuracy=accuracy,
-        correct=int(correct.item()),
-        total=total_count,
-        predictions=predictions,
-        targets=targets,
-        confusion_matrix=cm,
-        classification_report=report,
-    )
 
 
 def build_predictor_checkpoint_payload(checkpoint: dict) -> dict:
@@ -244,8 +148,6 @@ class ClassificationTrainer(
             self.test_loader
             if self.test_loader is not None
             else self.val_loader
-            if self.val_loader is not None
-            else self.train_loader
         )
         self.visualizer.visualize_predictions(
             data_loader=prediction_loader,
@@ -341,26 +243,18 @@ class ClassificationTrainer(
 
             # Training
             train_loss, train_acc = self._train_epoch()
-            self.metrics.losses["train"].append(train_loss)
-            self.metrics.accuracies["train"].append(train_acc)
+            self.metrics.losses.train.append(train_loss)
+            self.metrics.accuracies.train.append(train_acc)
 
             # Validation
-            if self.val_loader is None:
-                val_loss, val_acc = train_loss, train_acc
-                self.metrics.losses["val"].append(val_loss)
-                self.metrics.accuracies["val"].append(val_acc)
-            else:
-                val_loss, val_acc = self._validate()
-                self.metrics.losses["val"].append(val_loss)
-                self.metrics.accuracies["val"].append(val_acc)
+            val_loss, val_acc = self._validate()
+            self.metrics.losses.val.append(val_loss)
+            self.metrics.accuracies.val.append(val_acc)
 
             ema_val_loss: float | None = None
             ema_val_acc: float | None = None
             if self.ema is not None:
-                if self.val_loader is None:
-                    ema_val_loss, ema_val_acc = val_loss, val_acc
-                else:
-                    ema_val_loss, ema_val_acc = self._validate_with_ema()
+                ema_val_loss, ema_val_acc = self._validate_with_ema()
 
             # Learning rate scheduling
             if self.scheduler is not None:
@@ -371,26 +265,16 @@ class ClassificationTrainer(
 
             # Logging
             gpu = gpu_epoch_log_suffix()
-            if self.val_loader is None:
-                logger.info(
-                    "Epoch %d/%d | train loss=%.4f acc=%.2f%% | val skipped (schedule uses train)%s",
-                    epoch + 1,
-                    self.num_epochs,
-                    train_loss,
-                    train_acc,
-                    gpu,
-                )
-            else:
-                logger.info(
-                    "Epoch %d/%d | train loss=%.4f acc=%.2f%% | val loss=%.4f acc=%.2f%%%s",
-                    epoch + 1,
-                    self.num_epochs,
-                    train_loss,
-                    train_acc,
-                    val_loss,
-                    val_acc,
-                    gpu,
-                )
+            logger.info(
+                "Epoch %d/%d | train loss=%.4f acc=%.2f%% | val loss=%.4f acc=%.2f%%%s",
+                epoch + 1,
+                self.num_epochs,
+                train_loss,
+                train_acc,
+                val_loss,
+                val_acc,
+                gpu,
+            )
             if ema_val_loss is not None and ema_val_acc is not None:
                 logger.info(
                     "Epoch %d/%d | ema val loss=%.4f acc=%.2f%%",
@@ -502,8 +386,8 @@ class ClassificationTrainer(
             class_names=self.class_names,
             split_name="Test",
         )
-        self.metrics.losses["test"].append(summary.loss)
-        self.metrics.accuracies["test"].append(summary.accuracy)
+        self.metrics.losses.test.append(summary.loss)
+        self.metrics.accuracies.test.append(summary.accuracy)
 
     def _save_predictor_checkpoint(self, filename: str = "predictor.pth") -> None:
         candidates = [self.checkpoints_dir / "best.pth"]

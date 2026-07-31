@@ -1,4 +1,4 @@
-name: "convnextv2_nano"
+name: "resnet18"
 in_channels: 3
 pretrained: true
 dropout: 0.2
