@@ -19,5 +19,18 @@ checkpoints/
 # Classification Hydra: track only composer + per-group defaults
 configs/classification/**
 !configs/classification/main.yaml
+!configs/classification/test.yaml
 !configs/classification/**/
 !configs/classification/**/default.yaml
+!configs/classification/**/minimal.yaml
+
+# Local run notes
+last-training-*.txt
+
+# Segmentation Hydra: track composer + defaults + minimal smoke configs
+configs/segmentation/**
+!configs/segmentation/main.yaml
+!configs/segmentation/test.yaml
+!configs/segmentation/**/
+!configs/segmentation/**/default.yaml
+!configs/segmentation/**/minimal.yaml

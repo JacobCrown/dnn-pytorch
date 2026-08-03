@@ -1,7 +1,4 @@
-"""
-This file is supposed to be used to predict the segmentation mask of an image. It should work on it's own, without using
-any other files from the project.
-"""
+"""Standalone segmentation inference from saved checkpoints."""
 
 from pathlib import Path
 
@@ -10,15 +7,16 @@ import numpy as np
 import segmentation_models_pytorch as smp
 import torch
 import torch.nn as nn
-from albumentations.pytorch import ToTensorV2
 from PIL.Image import Image
+
+from src.common.augmentations import get_augmentations
+from src.common.config import AugmentationConfig
 
 
 class SegmentationPredictor:
-    """Predictor class for segmentation models."""
+    """Load a segmentation checkpoint and predict class masks for images."""
 
     def __init__(self, checkpoint_path: Path):
-        """Initialize the predictor."""
         self.checkpoint_path: Path = checkpoint_path
         self.device: torch.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
@@ -50,12 +48,14 @@ class SegmentationPredictor:
         model.to(self.device)
         model.eval()
 
-        transforms = [
-            A.Resize(height=368, width=480),
-            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-            ToTensorV2(transpose_mask=True),
-        ]
-        preprocessing = A.Compose(transforms)
+        raw = model_config.get("preprocessing")
+        if not raw:
+            raise ValueError(
+                "Checkpoint model_config must contain a non-empty preprocessing list."
+            )
+        preprocessing = get_augmentations(
+            [AugmentationConfig.from_dict(item) for item in raw],
+        )
 
         class_idx_to_rgb = checkpoint["class_idx_to_rgb"]
         class_idx_to_name = checkpoint["class_idx_to_name"]
@@ -69,14 +69,9 @@ class SegmentationPredictor:
         with torch.inference_mode():
             return self.model(input).argmax(dim=1, keepdim=True)
 
-    def _postprocess(self, input: torch.Tensor) -> torch.Tensor:
-        return input
-
     def predict(self, input: Image | np.ndarray) -> torch.Tensor:
-        preprocess = self._preprocess(input)
-        result = self._predict(preprocess)
-        postprocess = self._postprocess(result)
-        return postprocess
+        batch = self._preprocess(input)
+        return self._predict(batch)
 
-    def predict_class(self, input: Image | np.ndarray) -> str:
-        pass
+    def predict_class_name(self, class_index: int) -> str:
+        return self.class_idx_to_name[class_index]

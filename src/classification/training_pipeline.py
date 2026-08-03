@@ -3,23 +3,31 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import albumentations as A
 from torch.utils.data import DataLoader
 from torchinfo import summary
 
-from src.classification.config import (ClassificationConfig,
-                                       ClassificationModelConfig)
+from src.classification.config import (
+    ClassificationConfig,
+    ClassificationDataConfig,
+    ClassificationModelConfig,
+)
 from src.classification.dataset import ClassificationDataset
 from src.classification.model_manager import ClassificationModelManager
 from src.classification.trainer import ClassificationTrainer
 from src.common.augmentations import get_augmentations
 from src.common.data_utils import create_data_loaders
+from src.common.experiment_paths import classification_experiment_root
+from src.common.experiment_registry import write_run_record
+from src.common.logging import configure_run_logging
 from src.common.losses import get_loss_function
 from src.common.optimizers import get_optimizer
 from src.common.schedulers import get_scheduler
+from src.common.tracking import build_tracker
+from src.common.training_contracts import TrainingArtifacts
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +57,26 @@ class ClassificationTrainingMetrics:
     test_loss: float | None
     test_accuracy: float | None
 
+
+@dataclass(frozen=True)
+class ClassificationTrainingOutcome:
+    """Paths after a completed training run (Hydra cwd is typically outputs/...)."""
+
+    artifacts: TrainingArtifacts
+    metrics: ClassificationTrainingMetrics
+    used_validation: bool
+
+    @property
+    def checkpoints_dir(self) -> Path:
+        return self.artifacts.checkpoints_dir
+
+    @property
+    def best_checkpoint_path(self) -> Path | None:
+        return self.artifacts.best_checkpoint_path
+
+    @property
+    def predictor_checkpoint_path(self) -> Path | None:
+        return self.artifacts.predictor_checkpoint_path
 
 
 def apply_num_classes_from_train_dataset(
@@ -213,6 +241,19 @@ def run_classification_training(
     config: ClassificationConfig,
 ) -> None:
     """Wire datasets, model, optimizer and run training. Callable without Hydra."""
+    configure_run_logging(
+        experiment_directory=classification_experiment_root(
+            train_root_dir=config.train.root_dir,
+            data_root=config.data.root,
+            model_name=config.model.name,
+            height=config.model.height,
+            width=config.model.width,
+            epochs=config.train.epochs,
+            batch_size=config.train.batch_size,
+        ),
+        use_rich_console=True,
+        quiet_third_party_loggers=True,
+    )
     data_preproc = get_augmentations(config.model.preprocessing)
     data_pipeline = build_classification_data_pipeline(config, data_preproc)
     log_data_pipeline_summary(config, data_pipeline)
@@ -234,6 +275,21 @@ def run_classification_training(
 
     criterion = get_loss_function(config.train.loss_function)
 
+    experiment_root = classification_experiment_root(
+        train_root_dir=config.train.root_dir,
+        data_root=config.data.root,
+        model_name=config.model.name,
+        height=config.model.height,
+        width=config.model.width,
+        epochs=config.train.epochs,
+        batch_size=config.train.batch_size,
+    )
+    tracker = build_tracker(
+        config=config.train.tracking,
+        run_dir=experiment_root,
+        task_name="classification",
+    )
+
     trainer = ClassificationTrainer(
         model_manager=classification_model_manager,
         train_loader=data_pipeline.train_loader,
@@ -243,8 +299,32 @@ def run_classification_training(
         optimizer=optimizer,
         scheduler=scheduler,
         cfg=config,
+        tracker=tracker,
     )
 
     logger.info("Starting training for %d epochs", config.train.epochs)
 
     trainer.train()
+
+    outcome = ClassificationTrainingOutcome(
+        artifacts=TrainingArtifacts.from_completed_run(
+            trainer.root_dir,
+            checkpoints_dir_name=config.train.checkpoints_dir,
+            logs_dir_name=config.train.logs_dir,
+            visualizations_dir_name=config.train.visualize_dir,
+        ),
+        metrics=_collect_training_metrics(trainer),
+        used_validation=data_pipeline.val_loader is not None,
+    )
+    write_run_record(
+        task_name="classification",
+        artifacts=outcome.artifacts,
+        metrics=outcome.metrics,
+        config=config.to_dict(),
+        used_validation=outcome.used_validation,
+    )
+    tracker.log_metrics(asdict(outcome.metrics))
+    if outcome.best_checkpoint_path is not None:
+        tracker.log_artifact("best_checkpoint", outcome.best_checkpoint_path)
+    tracker.close()
+    return outcome

@@ -21,7 +21,9 @@ register_hydra_resolvers()
     config_name="main.yaml",
 )
 def main(cfg: dict) -> None:
-    config = ClassificationConfig.from_dict(dict(cfg))
+    config = ClassificationConfig.from_dict(
+        OmegaConf.to_container(cfg, resolve=True, throw_on_missing=False)  # type: ignore[arg-type]
+    )
     experiment_dir = classification_experiment_root(
         train_root_dir=config.train.root_dir,
         data_root=config.data.root,

@@ -26,18 +26,9 @@ class ClassificationDataset(BaseDataset):
     data_root/
     ├── class1/
     │   ├── image1.jpg
-    │   ├── image2.jpg
     │   └── ...
     ├── class2/
-    │   ├── image3.jpg
     │   └── ...
-    └── ...
-
-    Args:
-        data_root (str): Root directory containing class-named subdirectories
-        transforms (Compose): Torchvision transforms to apply to images
-        extensions (List[str]): List of image file extensions to include
-        max_samples (Optional[int]): Maximum number of samples to load per class
     """
 
     def __init__(

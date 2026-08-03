@@ -68,6 +68,18 @@ dnn-search-classification = "src.classification.optuna_search:main"
 dnn-train-best-classification = "src.classification.train_best:main"
 dnn-train-classification = "src.classification.main:main"
 dnn-train-segmentation = "src.segmentation.main:main"
+dnn-test-segmentation = "src.segmentation.test:main"
+dnn-compare = "src.common.experiment_registry:main"
+dnn-export-classification = "src.classification.export:main"
+dnn-export-segmentation = "src.segmentation.export:main"
+dnn-serve-classification = "src.classification.serve:main"
+dnn-serve-segmentation = "src.segmentation.serve:main"
+dnn-studio = "src.common.experiment_studio:main"
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: end-to-end training tests (may download weights or take longer)",
+]
 
 [tool.ruff]
 line-length = 88

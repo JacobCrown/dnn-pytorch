@@ -184,8 +184,11 @@ class ClassificationModelManager(BaseModelManager[ClassificationModelConfig]):
     def from_checkpoint_path(
         cls, checkpoint_path: Path
     ) -> "ClassificationModelManager":
+        """Build a model manager and load trained weights from a checkpoint."""
         checkpoint = torch.load(
             str(checkpoint_path), map_location=DEVICE, weights_only=False
         )
         config = ClassificationModelConfig.from_dict(checkpoint["model_config"])
-        return cls(config)
+        manager = cls(config)
+        manager.load_model_state_dict(checkpoint["model_state_dict"])
+        return manager

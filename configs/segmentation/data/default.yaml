@@ -1,4 +1,4 @@
-root: "data/segmentation/road/CamVid"
+root: "data/segmentation/CamVid"
 train_dir: "train"
 val_dir: "val"
 test_dir: "test"

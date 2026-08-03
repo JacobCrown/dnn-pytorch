@@ -62,3 +62,13 @@ class SegmentationConfig(BaseConfig):
     train: BaseTrainingConfig = field(default_factory=BaseTrainingConfig)
     augmentations: list[AugmentationConfig] = field(default_factory=list)
     data: SegmentationDataConfig = field(default_factory=SegmentationDataConfig)
+
+
+@dataclass
+class SegmentationTestConfig(BaseConfig):
+    """Configuration class for segmentation test-time evaluation."""
+
+    model: SegmentationModelConfig = field(default_factory=SegmentationModelConfig)
+    train: BaseTrainingConfig = field(default_factory=BaseTrainingConfig)
+    data: SegmentationDataConfig = field(default_factory=SegmentationDataConfig)
+    eval_checkpoint: str | None = None

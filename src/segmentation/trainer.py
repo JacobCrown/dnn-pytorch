@@ -2,6 +2,7 @@
 
 import logging
 import typing as t
+from dataclasses import dataclass
 from pathlib import Path
 
 import torch
@@ -12,7 +13,10 @@ from torch.utils.data import DataLoader
 from torchmetrics.functional.classification import multiclass_jaccard_index
 from tqdm import tqdm
 
+from src.common.experiment_paths import segmentation_experiment_root
 from src.common.logging import log_gpu_memory
+from src.common.progress_tools import iterate_with_progress
+from src.common.tracking import Tracker
 from src.common.utils import DEVICE
 from src.core.trainer import BaseTrainer
 from src.segmentation.config import SegmentationConfig
@@ -22,6 +26,62 @@ from src.segmentation.model_manager import SegmentationModelManager
 from src.segmentation.visualizer import SegmentationVisualizer
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class SegmentationEvaluationSummary:
+    loss: float
+    iou: float
+
+
+def evaluate_segmentation_model(
+    *,
+    model: nn.Module,
+    data_loader: DataLoader,
+    criterion: nn.Module,
+    use_amp: bool,
+    num_classes: int,
+    split_name: str = "Test",
+) -> SegmentationEvaluationSummary:
+    """Evaluate a segmentation model and log aggregate statistics."""
+    model = model.to(DEVICE)
+    model.eval()
+
+    total_loss = torch.tensor(0.0, device=DEVICE)
+    total_iou = torch.tensor(0.0, device=DEVICE)
+    num_batches = len(data_loader)
+
+    with torch.inference_mode():
+        for data, target in iterate_with_progress(
+            data_loader,
+            description=f"Eval · {split_name}",
+            transient=True,
+        ):
+            data, target = data.to(DEVICE), target.to(DEVICE)
+
+            with autocast(device_type=DEVICE, enabled=use_amp):
+                output = model(data)
+                loss = criterion(output, target)
+
+            pred = output.argmax(dim=1)
+            total_loss += loss
+            total_iou += multiclass_jaccard_index(
+                preds=pred,
+                target=target,
+                num_classes=num_classes,
+                average="macro",
+                ignore_index=255,
+            )
+
+    avg_loss = total_loss.item() / num_batches
+    avg_iou = total_iou.item() / num_batches
+    logger.info(
+        "%s | loss=%.4f iou=%.4f",
+        split_name,
+        avg_loss,
+        avg_iou,
+    )
+    return SegmentationEvaluationSummary(loss=avg_loss, iou=avg_iou)
 
 
 class SegmentationTrainer(
@@ -42,8 +102,10 @@ class SegmentationTrainer(
         val_loader: DataLoader,
         cfg: SegmentationConfig,
         test_loader: DataLoader | None = None,
+        tracker: Tracker | None = None,
     ):
         self.cfg: SegmentationConfig = cfg
+        self.tracker = tracker
         super().__init__(
             model_manager=model_manager,
             criterion=criterion,
@@ -59,19 +121,15 @@ class SegmentationTrainer(
 
     def _get_root_dir_path(self) -> Path:
         """Get the path of the root directory."""
-        arch = self.cfg.model.architecture
-        model = self.cfg.model.encoder_name
-        height = self.cfg.model.height
-        width = self.cfg.model.width
-        epochs = self.cfg.train.epochs
-        bs = self.cfg.train.batch_size
-        dataset_path = Path(self.cfg.data.root)
-        dataset_name = dataset_path.name
-        return (
-            Path(self.cfg.train.root_dir)
-            / "segmentation"
-            / dataset_name
-            / f"{arch}_{model}_{height}x{width}_{epochs}epochs_{bs}bs"
+        return segmentation_experiment_root(
+            train_root_dir=self.cfg.train.root_dir,
+            data_root=self.cfg.data.root,
+            architecture=self.cfg.model.architecture,
+            encoder_name=self.cfg.model.encoder_name,
+            height=self.cfg.model.height,
+            width=self.cfg.model.width,
+            epochs=self.cfg.train.epochs,
+            batch_size=self.cfg.train.batch_size,
         )
 
     def _visualize_pre_train(self) -> None:
@@ -171,8 +229,11 @@ class SegmentationTrainer(
                     torch.nn.utils.clip_grad_norm_(
                         self.model.parameters(), self.grad_clip
                     )
+                scale_before_step = self.scaler.get_scale()
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
+                if self.scaler.get_scale() >= scale_before_step:
+                    self._after_optimizer_step()
             else:
                 loss.backward()
                 if self.grad_clip is not None:
@@ -180,6 +241,7 @@ class SegmentationTrainer(
                         self.model.parameters(), self.grad_clip
                     )
                 self.optimizer.step()
+                self._after_optimizer_step()
 
             total_loss += loss
 
@@ -221,6 +283,17 @@ class SegmentationTrainer(
             logger.info(f"  Val Loss: {val_loss:.4f}, Val mIoU: {val_miou:.4f}")
 
             log_gpu_memory(logger)
+
+            if self.tracker is not None:
+                self.tracker.log_metrics(
+                    {
+                        "train_loss": train_loss,
+                        "train_iou": train_miou,
+                        "val_loss": val_loss,
+                        "val_iou": val_miou,
+                    },
+                    step=epoch + 1,
+                )
 
             # Always save last checkpoint
             self._save_checkpoint("last.pth")

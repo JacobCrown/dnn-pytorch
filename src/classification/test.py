@@ -173,7 +173,9 @@ def main(cfg: dict) -> None:
         quiet_third_party_loggers=True,
     )
     logger.info("Full run log (all levels): %s", run_log_path)
-    config = ClassificationTestConfig.from_dict(dict(cfg))
+    config = ClassificationTestConfig.from_dict(
+        OmegaConf.to_container(cfg, resolve=True, throw_on_missing=False)  # type: ignore[arg-type]
+    )
     logger.info("Resolved configuration:\n%s", OmegaConf.to_yaml(cfg, resolve=True))
 
     set_seed()
@@ -189,7 +191,6 @@ def main(cfg: dict) -> None:
     checkpoint_class_names = _validate_checkpoint_class_names(checkpoint)
 
     model_manager = ClassificationModelManager.from_checkpoint_path(checkpoint_path)
-    model_manager.load_model_state_dict(checkpoint["model_state_dict"])
     _log_model_summary(model_manager)
 
     data_preproc = get_augmentations(config.model.preprocessing)
