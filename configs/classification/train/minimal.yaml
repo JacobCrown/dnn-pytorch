@@ -18,12 +18,6 @@ visualize_dir: "visualizations"
 visualize_pre_train: false
 visualize_post_train: false
 
-ema:
-  enabled: false
-  decay: 0.9999
-  update_after_step: 0
-  update_every: 1
-
 tracking:
   local_enabled: true
   wandb_enabled: false
