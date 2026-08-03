@@ -39,7 +39,9 @@ from tests.fixtures.datasets import (
 )
 
 
-def _minimal_classification_config(dataset_root: Path, output_root: Path) -> ClassificationConfig:
+def _minimal_classification_config(
+    dataset_root: Path, output_root: Path
+) -> ClassificationConfig:
     return ClassificationConfig(
         model=ClassificationModelConfig(
             name="mobilenetv3_small_075",
@@ -74,7 +76,9 @@ def _minimal_classification_config(dataset_root: Path, output_root: Path) -> Cla
             visualize_pre_train=False,
             visualize_post_train=False,
             optimizer=OptimizerConfig(name="Adam", params={"lr": 0.01}),
-            scheduler=SchedulerConfig(name="StepLR", params={"step_size": 1, "gamma": 1.0}),
+            scheduler=SchedulerConfig(
+                name="StepLR", params={"step_size": 1, "gamma": 1.0}
+            ),
             loss_function=[
                 LossFunctionConfig(
                     name="FocalLoss",
@@ -85,7 +89,9 @@ def _minimal_classification_config(dataset_root: Path, output_root: Path) -> Cla
     )
 
 
-def _minimal_segmentation_config(dataset_root: Path, output_root: Path) -> SegmentationConfig:
+def _minimal_segmentation_config(
+    dataset_root: Path, output_root: Path
+) -> SegmentationConfig:
     return SegmentationConfig(
         model=SegmentationModelConfig(
             architecture="Unet",
@@ -127,7 +133,9 @@ def _minimal_segmentation_config(dataset_root: Path, output_root: Path) -> Segme
             visualize_post_train=False,
             resume_from_checkpoint=None,
             optimizer=OptimizerConfig(name="Adam", params={"lr": 0.01}),
-            scheduler=SchedulerConfig(name="StepLR", params={"step_size": 1, "gamma": 1.0}),
+            scheduler=SchedulerConfig(
+                name="StepLR", params={"step_size": 1, "gamma": 1.0}
+            ),
             loss_function=[
                 LossFunctionConfig(
                     name="DiceLoss",
@@ -139,7 +147,9 @@ def _minimal_segmentation_config(dataset_root: Path, output_root: Path) -> Segme
 
 
 @pytest.mark.integration
-def test_classification_training_writes_run_record_and_artifacts(tmp_path: Path) -> None:
+def test_classification_training_writes_run_record_and_artifacts(
+    tmp_path: Path,
+) -> None:
     dataset_root = create_tiny_classification_dataset(tmp_path / "data")
     config = _minimal_classification_config(dataset_root, tmp_path / "output")
 
@@ -164,7 +174,11 @@ def test_classification_training_writes_run_record_and_artifacts(tmp_path: Path)
         .read_text()
         .splitlines()
     ]
-    epoch_events = [event for event in events if event.get("type") == "metrics" and event.get("step")]
+    epoch_events = [
+        event
+        for event in events
+        if event.get("type") == "metrics" and event.get("step")
+    ]
     assert len(epoch_events) >= 1
 
 
@@ -190,7 +204,11 @@ def test_segmentation_training_writes_run_record_and_artifacts(tmp_path: Path) -
         .read_text()
         .splitlines()
     ]
-    epoch_events = [event for event in events if event.get("type") == "metrics" and event.get("step")]
+    epoch_events = [
+        event
+        for event in events
+        if event.get("type") == "metrics" and event.get("step")
+    ]
     assert len(epoch_events) >= 1
 
 

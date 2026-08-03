@@ -40,9 +40,7 @@ def test_to_plain_python_converts_nested_dict_config() -> None:
 
 def test_write_run_record_accepts_hydra_like_config(tmp_path: Path) -> None:
     config = {
-        "augmentations": ListConfig(
-            [{"name": "HorizontalFlip", "params": {"p": 0.5}}]
-        ),
+        "augmentations": ListConfig([{"name": "HorizontalFlip", "params": {"p": 0.5}}]),
         "model": {
             "preprocessing": ListConfig(
                 [{"name": "Normalize", "params": {"mean": [0.5, 0.5, 0.5]}}]

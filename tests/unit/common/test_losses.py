@@ -6,7 +6,9 @@ from src.common.losses import CombinedLoss, get_loss_function
 
 def test_get_loss_function_builds_single_loss() -> None:
     loss = get_loss_function(
-        LossFunctionConfig(name="DiceLoss", params={"mode": "multiclass", "smooth": 1e-6})
+        LossFunctionConfig(
+            name="DiceLoss", params={"mode": "multiclass", "smooth": 1e-6}
+        )
     )
 
     assert isinstance(loss, smp.losses.DiceLoss)

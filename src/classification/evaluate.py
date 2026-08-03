@@ -4,8 +4,7 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 from sklearn.metrics import classification_report, confusion_matrix
-from torch import nn
-from torch import autocast
+from torch import autocast, nn
 from torch.utils.data import DataLoader
 
 from src.common.progress_tools import iterate_with_progress

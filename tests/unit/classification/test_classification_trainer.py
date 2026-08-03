@@ -5,8 +5,10 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from src.classification.trainer import (build_predictor_checkpoint_payload,
-                                        evaluate_classification_model)
+from src.classification.trainer import (
+    build_predictor_checkpoint_payload,
+    evaluate_classification_model,
+)
 
 
 class SignBasedModel(nn.Module):

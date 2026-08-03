@@ -13,7 +13,9 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Export a classification checkpoint.")
     parser.add_argument("checkpoint", help="Path to a classification .pth checkpoint.")
     parser.add_argument("output", help="Path to write the ONNX model.")
-    parser.add_argument("--no-verify", action="store_true", help="Skip ONNX Runtime smoke test.")
+    parser.add_argument(
+        "--no-verify", action="store_true", help="Skip ONNX Runtime smoke test."
+    )
     args = parser.parse_args(argv)
 
     manager = ClassificationModelManager.from_checkpoint_path(Path(args.checkpoint))

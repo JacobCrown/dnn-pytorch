@@ -10,16 +10,15 @@ from torch import autocast
 from torch.utils.data import DataLoader
 
 from src.classification.config import ClassificationConfig
+from src.classification.evaluate import evaluate_classification_model
 from src.classification.metrics import ClassificationMetrics
 from src.classification.model_manager import ClassificationModelManager
 from src.classification.visualizer import ClassificationVisualizer
 from src.common.experiment_paths import classification_experiment_root
 from src.common.logging import artifact_rel_to_experiment, gpu_epoch_log_suffix
 from src.common.progress_tools import iterate_with_progress
-from src.common.tracking import Tracker
 from src.common.utils import DEVICE
 from src.core.trainer import BaseTrainer
-from src.classification.evaluate import evaluate_classification_model
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +54,8 @@ class ClassificationTrainer(
         val_loader: DataLoader | None,
         cfg: ClassificationConfig,
         test_loader: DataLoader | None = None,
-        tracker: Tracker | None = None,
     ):
         self.cfg: ClassificationConfig = cfg
-        self.tracker = tracker
         # Task specific attributes
         self.class_names: list[str] = train_loader.dataset.get_class_names()
         super().__init__(
@@ -148,9 +145,7 @@ class ClassificationTrainer(
         """
         logger.info("[viz] post-train · prediction panel")
         prediction_loader = (
-            self.test_loader
-            if self.test_loader is not None
-            else self.val_loader
+            self.test_loader if self.test_loader is not None else self.val_loader
         )
         self.visualizer.visualize_predictions(
             data_loader=prediction_loader,
@@ -286,18 +281,6 @@ class ClassificationTrainer(
                     ema_val_loss,
                     ema_val_acc,
                 )
-
-            if self.tracker is not None:
-                epoch_metrics = {
-                    "train_loss": train_loss,
-                    "train_accuracy": train_acc,
-                    "val_loss": val_loss,
-                    "val_accuracy": val_acc,
-                }
-                if ema_val_loss is not None and ema_val_acc is not None:
-                    epoch_metrics["ema_val_loss"] = ema_val_loss
-                    epoch_metrics["ema_val_accuracy"] = ema_val_acc
-                self.tracker.log_metrics(epoch_metrics, step=epoch + 1)
 
             # Always save last checkpoint
             self._save_classification_checkpoint(

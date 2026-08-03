@@ -2,8 +2,12 @@
 
 from dataclasses import dataclass, field
 
-from src.common.config import (AugmentationConfig, BaseConfig, BaseDataConfig,
-                               BaseTrainingConfig)
+from src.common.config import (
+    AugmentationConfig,
+    BaseConfig,
+    BaseDataConfig,
+    BaseTrainingConfig,
+)
 
 
 @dataclass

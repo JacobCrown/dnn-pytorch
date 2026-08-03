@@ -1,11 +1,9 @@
 from pathlib import Path
-from typing import List
 
 import pytest
 import yaml
 
 from src.common.augmentations import get_augmentations
-from src.common.config import AugmentationConfig
 from src.common.config import AugmentationConfig
 
 
@@ -22,4 +20,3 @@ class TestAugmentations:
         augmentations_albumentations = get_augmentations(augmentations)
         for aug_alb, aug in zip(augmentations_albumentations.transforms, augmentations):
             assert aug_alb.__class__.__name__ == aug.name
-

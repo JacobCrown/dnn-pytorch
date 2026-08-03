@@ -13,7 +13,9 @@ from src.common.serving import classification_response, to_json
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Run local classification inference.")
-    parser.add_argument("checkpoint", help="Path to a classification predictor checkpoint.")
+    parser.add_argument(
+        "checkpoint", help="Path to a classification predictor checkpoint."
+    )
     parser.add_argument("image", help="Path to an image file.")
     args = parser.parse_args(argv)
 

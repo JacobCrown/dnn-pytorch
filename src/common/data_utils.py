@@ -16,7 +16,7 @@ def create_data_loaders(
     test_dataset: Dataset | None = None,
     *,
     allow_empty_val_test: bool = False,
-) -> tuple[DataLoader, DataLoader | None, DataLoader | None]:
+) -> tuple[DataLoader, DataLoader, DataLoader | None]:
     """Create data loaders for training, validation, and test sets.
     Args:
         config: Training configuration.
@@ -51,19 +51,13 @@ def create_data_loaders(
         **common_kwargs,
     )
 
-    if allow_empty_val_test and len(cast(Sized, val_dataset)) == 0:
-        logger.warning(
-            "Validation dataset is empty — validation will be skipped for this run."
-        )
-        val_loader = None
-    else:
-        val_loader = DataLoader(
-            val_dataset,
-            batch_size=config.batch_size,
-            shuffle=False,
-            drop_last=False,
-            **common_kwargs,
-        )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=config.batch_size,
+        shuffle=False,
+        drop_last=False,
+        **common_kwargs,
+    )
 
     test_loader = None
     if test_dataset is not None:

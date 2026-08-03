@@ -3,8 +3,10 @@
 from pathlib import Path
 
 from src.common.experiment_paths import (
-    classification_experiment_root, road_sign_classification_experiment_root,
-    segmentation_experiment_root)
+    classification_experiment_root,
+    road_sign_classification_experiment_root,
+    segmentation_experiment_root,
+)
 
 
 def test_classification_experiment_root() -> None:
