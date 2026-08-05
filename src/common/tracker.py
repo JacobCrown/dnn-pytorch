@@ -26,8 +26,8 @@ class MLFlowTracker(BaseTracker):
             local_dir = str(local_dir)
         mlflow.log_artifacts(local_dir=local_dir)
 
-    def log_model(self, pytorch_model: nn.Module, input_example: torch.Tensor) -> None:
-        mlflow.pytorch.log_model(pytorch_model=pytorch_model, input_example=input_example)
+    def log_model(self, pytorch_model: nn.Module, name: str, input_example: torch.Tensor) -> None:
+        mlflow.pytorch.log_model(pytorch_model=pytorch_model, name=name, input_example=input_example, serialization_format="pickle")
 
     def close_tracker(self) -> None:
         mlflow.end_run()

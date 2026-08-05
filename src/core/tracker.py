@@ -12,6 +12,10 @@ class BaseTracker(ABC):
         pass
 
     @abstractmethod
+    def log_params(self, local_dir: Path | str) -> None:
+        pass
+
+    @abstractmethod
     def log_metrics(self, metrics: dict[str, float], step: int) -> None:
         pass
 

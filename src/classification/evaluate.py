@@ -13,18 +13,6 @@ from src.common.utils import DEVICE
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ClassificationEvaluationSummary:
-    loss: float
-    accuracy: float
-    correct: int
-    total: int
-    predictions: list[int]
-    targets: list[int]
-    confusion_matrix: np.ndarray
-    classification_report: str
-
-
 def evaluate_classification_model(
     model: nn.Module,
     data_loader: DataLoader,
@@ -32,7 +20,7 @@ def evaluate_classification_model(
     use_amp: bool,
     class_names: list[str],
     split_name: str = "Test",
-) -> ClassificationEvaluationSummary:
+) -> tuple[float, float, torch.Tensor]:
     """Evaluate a classification model and log aggregate statistics."""
     model = model.to(DEVICE)
     model.eval()
@@ -92,13 +80,4 @@ def evaluate_classification_model(
     )
     logger.debug("%s classification report:\n%s", split_name, report)
 
-    return ClassificationEvaluationSummary(
-        loss=avg_loss,
-        accuracy=accuracy,
-        correct=int(correct.item()),
-        total=total_count,
-        predictions=predictions,
-        targets=targets,
-        confusion_matrix=cm,
-        classification_report=report,
-    )
+    return avg_loss, accuracy, data

@@ -335,16 +335,19 @@ class ClassificationTrainer(
 
     def _evaluate(self, test_loader: DataLoader) -> None:
         """Evaluate the model on test data."""
-        summary = evaluate_classification_model(
-            model=self.model,
+        best_model = self.model_manager.from_checkpoint_path(self.checkpoints_dir / "predictor.pth").model
+        avg_loss, accuracy, _ = evaluate_classification_model(
+            model=best_model,
             data_loader=test_loader,
             criterion=self.criterion,
             use_amp=self.use_amp,
             class_names=self.class_names,
             split_name="Test",
         )
-        self.metrics.losses.test.append(summary.loss)
-        self.metrics.accuracies.test.append(summary.accuracy)
+        self.metrics.losses.test.append(avg_loss)
+        self.metrics.accuracies.test.append(accuracy)
+        # Skip loggin for now. Now focus on different things
+        # self.tracker.log_model(pytorch_model=best_model, name="best model", input_example=model_input)
 
     def _save_predictor_checkpoint(self, filename: str = "predictor.pth") -> None:
         best_checkpoint = self.checkpoints_dir / "best.pth"

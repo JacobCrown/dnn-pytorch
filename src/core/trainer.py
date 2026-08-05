@@ -55,12 +55,19 @@ class BaseTrainer[
             test_loader: Test data loader (optional)
         """
 
+        # Model
         self.model_manager: ModelManagerType = model_manager
         self.model: nn.Module = self.model_manager.model.to(DEVICE)
+
+        # Dataloaders
         self.train_loader: DataLoader = train_loader
         self.val_loader: DataLoader = val_loader
         self.test_loader: DataLoader | None = test_loader
+
+        # Config
         self.train_cfg: BaseTrainingConfig = cfg
+
+        # Directory paths
         self.root_dir: Path = self._get_root_dir_path()
         self.checkpoints_dir: Path = self.root_dir / self.train_cfg.checkpoints_dir
         self.log_dir: Path = self.root_dir / self.train_cfg.logs_dir
@@ -88,7 +95,7 @@ class BaseTrainer[
             self.train_cfg.early_stopping_patience
         )
 
-        # Mixed precision
+        # Mixed precision, clipping, scaling
         self.use_amp: bool = self.train_cfg.use_amp
         self.grad_clip: float | None = self.train_cfg.gradient_clip
         self.scaler: GradScaler = GradScaler(device=DEVICE, enabled=self.use_amp)
@@ -111,9 +118,8 @@ class BaseTrainer[
 
         # Setup metrics tracking
         self.tracker: TrackerType = self.tracker_cls()
-        run_name = self._get_run_name(run_directory)
-        experiment_name = self._get_experiment_name(run_directory)
-        self.tracker.init_tracker(experiment_name, run_name)
+        self._setup_tracking(run_directory)
+        self.tracker.log_params({**self.model_manager.model_cfg.to_dict(), **self.train_cfg.to_dict()})
 
         # Try to resume from checkpoint if specified
         self._try_resume_from_checkpoint()
@@ -121,6 +127,11 @@ class BaseTrainer[
     def __exit__(self):
         # End tracker run
         self.tracker.close_tracker()
+
+    def _setup_tracking(self, run_directory: Path):
+        run_name = self._get_run_name(run_directory)
+        experiment_name = self._get_experiment_name(run_directory)
+        self.tracker.init_tracker(experiment_name, run_name)
 
     @staticmethod
     def _get_run_name(run_directory: Path) -> str:
