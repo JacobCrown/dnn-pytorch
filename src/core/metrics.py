@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Self
 
 from src.common.metrics import LossMetrics
@@ -29,3 +29,10 @@ class BaseMetrics:
             if hasattr(instance, key):
                 setattr(instance, key, value)
         return instance
+
+    def get_latest_metrics(self) -> dict[str, float]:
+        """Generic method for obtaining latest metrics"""
+        latest_metrics: dict[str, float] = {}
+        for attr in fields(self):
+            latest_metrics.update(getattr(self, attr.name).get_latest_metrics)
+        return latest_metrics

@@ -94,12 +94,12 @@
 #     gamma_limit: [80, 120]
 #     p: 0.5
 
-# - name: HueSaturationValue
-#   params:
-#     p: 0.2
-#     hue_shift_limit: 5
-#     sat_shift_limit: 10
-#     val_shift_limit: 20
+- name: HueSaturationValue
+  params:
+    p: 0.2
+    hue_shift_limit: 5
+    sat_shift_limit: 10
+    val_shift_limit: 20
 
 # - name: RGBShift
 #   params:
@@ -108,9 +108,9 @@
 #     g_shift_limit: 20
 #     b_shift_limit: 20
 
-# - name: ToGray
-#   params:
-#     p: 0.4
+- name: ToGray
+  params:
+    p: 0.1
 
 # - name: ToSepia
 #   params:
@@ -146,10 +146,10 @@
 #     p: 0.5
 #     blur_limit: [3, 7]
 
-# - name: GaussianBlur
-#   params:
-#     p: 0.3
-#     blur_limit: [3, 7]
+- name: GaussianBlur
+  params:
+    p: 0.3
+    blur_limit: [2, 3]
 
 # - name: MedianBlur
 #   params:

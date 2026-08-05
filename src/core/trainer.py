@@ -8,9 +8,9 @@ import torch.optim as optim
 from torch.amp import GradScaler  # type: ignore[reportMissingImports]
 from torch.utils.data import DataLoader
 
+from src.core.tracker import BaseTracker
 from src.common.config import BaseTrainingConfig
 from src.common.utils import DEVICE
-from src.core.ema import ModelEMA
 from src.core.metrics import BaseMetrics
 from src.core.model_manager import BaseModelManager
 from src.core.visualizer import BaseVisualizer
@@ -22,11 +22,13 @@ class BaseTrainer[
     VisualizerType: BaseVisualizer,
     MetricsType: BaseMetrics,
     ModelManagerType: BaseModelManager,
+    TrackerType: BaseTracker
 ](ABC):
     """Base trainer class for all tasks."""
 
     metrics_cls: type[MetricsType]
     visualizer_cls: type[VisualizerType]
+    tracker_cls: type[TrackerType]
 
     def __init__(
         self,
@@ -34,9 +36,10 @@ class BaseTrainer[
         criterion: nn.Module,
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler._LRScheduler,
+        cfg: BaseTrainingConfig,
+        run_directory: Path,
         train_loader: DataLoader,
         val_loader: DataLoader,
-        cfg: BaseTrainingConfig,
         test_loader: DataLoader | None = None,
     ):
         """Initialize the trainer.
@@ -62,6 +65,7 @@ class BaseTrainer[
         self.checkpoints_dir: Path = self.root_dir / self.train_cfg.checkpoints_dir
         self.log_dir: Path = self.root_dir / self.train_cfg.logs_dir
         self.visualize_dir: Path = self.root_dir / self.train_cfg.visualize_dir
+        self.run_directory: Path = run_directory
 
         # Create directories
         self.root_dir.mkdir(parents=True, exist_ok=True)
@@ -92,16 +96,6 @@ class BaseTrainer[
         # Training state
         self.current_epoch: int = 0
         self.num_epochs: int = self.train_cfg.epochs
-        self.ema: ModelEMA | None = (
-            ModelEMA(
-                self.model,
-                decay=self.train_cfg.ema.decay,
-                update_after_step=self.train_cfg.ema.update_after_step,
-                update_every=self.train_cfg.ema.update_every,
-            )
-            if self.train_cfg.ema.enabled
-            else None
-        )
 
         # Setup visualizer
         self.visualizer: VisualizerType = self.visualizer_cls(
@@ -115,8 +109,28 @@ class BaseTrainer[
         # Setup metrics
         self.metrics: MetricsType = self.metrics_cls()
 
+        # Setup metrics tracking
+        self.tracker: TrackerType = self.tracker_cls()
+        run_name = self._get_run_name(run_directory)
+        experiment_name = self._get_experiment_name(run_directory)
+        self.tracker.init_tracker(experiment_name, run_name)
+
         # Try to resume from checkpoint if specified
         self._try_resume_from_checkpoint()
+
+    def __exit__(self):
+        # End tracker run 
+        self.tracker.close_tracker()
+
+    @staticmethod
+    def _get_run_name(run_directory: Path) -> str:
+        """Modify directory into an experiment name by joining 2 last path items"""
+        return "-".join(run_directory.parts[-2:])
+
+    @staticmethod
+    def _get_experiment_name(run_directory: Path) -> str:
+        """Get 3 last part from path for dataset name extraction"""
+        return run_directory.parts[-3]
 
     def _try_resume_from_checkpoint(self) -> None:
         """Resume training from the latest checkpoint."""
@@ -193,9 +207,11 @@ class BaseTrainer[
         """Train the model."""
         if self.visualize_pre_train:
             self._visualize_pre_train()
+            self.tracker.log_artifacts(self.visualize_dir)
         self._train()
         if self.visualize_post_train:
             self._visualize_post_train()
+            self.tracker.log_artifacts(self.visualize_dir)
 
     def _save_checkpoint(
         self,
@@ -209,6 +225,7 @@ class BaseTrainer[
         checkpoint = self._create_checkpoint()
         filepath = self.checkpoints_dir / filename
         torch.save(checkpoint, filepath)
+        # self.tracker.log_model(pytorch_model=self.model)
 
     def _create_checkpoint(
         self,

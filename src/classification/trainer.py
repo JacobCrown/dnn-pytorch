@@ -8,7 +8,6 @@ import torch.nn as nn
 import torch.optim as optim
 from torch import autocast
 from torch.utils.data import DataLoader
-import mlflow
 
 from src.classification.config import ClassificationConfig
 from src.classification.evaluate import evaluate_classification_model
@@ -19,6 +18,7 @@ from src.common.experiment_paths import classification_experiment_root
 from src.common.logging import artifact_rel_to_experiment, gpu_epoch_log_suffix
 from src.common.progress_tools import iterate_with_progress
 from src.common.utils import DEVICE
+from src.common.tracker import MLFlowTracker
 from src.core.trainer import BaseTrainer
 
 logger = logging.getLogger(__name__)
@@ -37,13 +37,14 @@ def build_predictor_checkpoint_payload(checkpoint: dict) -> dict:
 
 class ClassificationTrainer(
     BaseTrainer[
-        ClassificationVisualizer, ClassificationMetrics, ClassificationModelManager
+        ClassificationVisualizer, ClassificationMetrics, ClassificationModelManager, MLFlowTracker
     ]
 ):
     """Trainer class for classification models."""
 
     metrics_cls = ClassificationMetrics
     visualizer_cls = ClassificationVisualizer
+    tracker_cls = MLFlowTracker
 
     def __init__(
         self,
@@ -52,6 +53,7 @@ class ClassificationTrainer(
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler._LRScheduler,
         cfg: ClassificationConfig,
+        run_directory: Path,
         train_loader: DataLoader,
         val_loader: DataLoader,
         test_loader: DataLoader | None = None,
@@ -64,9 +66,10 @@ class ClassificationTrainer(
             criterion=criterion,
             optimizer=optimizer,
             scheduler=scheduler,
+            cfg=cfg.train,
+            run_directory=run_directory,
             train_loader=train_loader,
             val_loader=val_loader,
-            cfg=cfg.train,
             test_loader=test_loader,
         )
         self._verify_train_batch_spatial_matches_model_config()
@@ -232,65 +235,66 @@ class ClassificationTrainer(
         patience_counter = 0
         best_val_loss = float("inf")
 
-        with mlflow.start_run():
-            for epoch in range(self.current_epoch, self.num_epochs):
-                self.current_epoch = epoch
+        for epoch in range(self.current_epoch, self.num_epochs):
+            self.current_epoch = epoch
 
-                # Training
-                train_loss, train_acc = self._train_epoch()
-                self.metrics.losses.train.append(train_loss)
-                self.metrics.accuracies.train.append(train_acc)
+            # Training
+            train_loss, train_acc = self._train_epoch()
+            self.metrics.losses.train.append(train_loss)
+            self.metrics.accuracies.train.append(train_acc)
 
-                # Validation
-                val_loss, val_acc = self._validate()
-                self.metrics.losses.val.append(val_loss)
-                self.metrics.accuracies.val.append(val_acc)
+            # Validation
+            val_loss, val_acc = self._validate()
+            self.metrics.losses.val.append(val_loss)
+            self.metrics.accuracies.val.append(val_acc)
 
-                # Learning rate scheduling
-                if self.scheduler is not None:
-                    if isinstance(self.scheduler, optim.lr_scheduler.ReduceLROnPlateau):
-                        self.scheduler.step(val_loss)
-                    else:
-                        self.scheduler.step()
-
-                # Logging
-                gpu = gpu_epoch_log_suffix()
-                logger.info(
-                    "Epoch %d/%d | train loss=%.4f acc=%.2f%% | val loss=%.4f acc=%.2f%%%s",
-                    epoch + 1,
-                    self.num_epochs,
-                    train_loss,
-                    train_acc,
-                    val_loss,
-                    val_acc,
-                    gpu,
-                )
-
-                # Always save last checkpoint
-                self._save_classification_checkpoint("last.pth")
-
-                # Save best model when validation metric improves
-                if val_loss < best_val_loss:
-                    best_val_loss = val_loss
-                    self._save_classification_checkpoint( "best.pth")
-                    patience_counter = 0
+            # Learning rate scheduling
+            if self.scheduler is not None:
+                if isinstance(self.scheduler, optim.lr_scheduler.ReduceLROnPlateau):
+                    self.scheduler.step(val_loss)
                 else:
-                    patience_counter += 1
+                    self.scheduler.step()
 
-                # Early stopping
-                if (
-                    self.early_stopping_patience
-                    and patience_counter >= self.early_stopping_patience
-                ):
-                    logger.info(f"Early stopping triggered after {epoch + 1} epochs")
-                    break
+            # Logging
+            gpu = gpu_epoch_log_suffix()
+            logger.info(
+                "Epoch %d/%d | train loss=%.4f acc=%.2f%% | val loss=%.4f acc=%.2f%%%s",
+                epoch + 1,
+                self.num_epochs,
+                train_loss,
+                train_acc,
+                val_loss,
+                val_acc,
+                gpu,
+            )
 
-            self._save_predictor_checkpoint()
+            self.tracker.log_metrics(self.metrics.get_latest_metrics(), step=epoch)
 
-            # Evaluate on test set if provided
-            if self.test_loader is not None:
-                logger.info("Hold-out test set")
-                self._evaluate(self.test_loader)
+            # Always save last checkpoint
+            self._save_classification_checkpoint("last.pth")
+
+            # Save best model when validation metric improves
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                self._save_classification_checkpoint("best.pth")
+                patience_counter = 0
+            else:
+                patience_counter += 1
+
+            # Early stopping
+            if (
+                self.early_stopping_patience
+                and patience_counter >= self.early_stopping_patience
+            ):
+                logger.info(f"Early stopping triggered after {epoch + 1} epochs")
+                break
+
+        self._save_predictor_checkpoint()
+
+        # Evaluate on test set if provided
+        if self.test_loader is not None:
+            logger.info("Hold-out test set")
+            self._evaluate(self.test_loader)
 
     def _validate(self) -> tuple[float, float]:
         """Validate the model.

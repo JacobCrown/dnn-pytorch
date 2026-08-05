@@ -34,7 +34,7 @@ def main(cfg: dict) -> None:
         batch_size=config.train.batch_size,
     ).resolve()
     run_log_path = configure_run_logging(
-        experiment_directory=experiment_dir,
+        run_directory=experiment_dir,
         use_rich_console=True,
         quiet_third_party_loggers=True,
     )

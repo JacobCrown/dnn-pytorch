@@ -230,17 +230,6 @@ class BaseTrainingConfig(BaseConfig):
     # Gradient clipping
     gradient_clip: float | None = None
 
-    # Exponential moving average of model weights
-    ema: EMAConfig = field(default_factory=EMAConfig)
-
-    # Tracking
-    tracking: TrackingConfig = field(default_factory=TrackingConfig)
-
-    # Distributed strategy
-    distributed: DistributedTrainingConfig = field(
-        default_factory=DistributedTrainingConfig
-    )
-
     # Root directory for output files
     root_dir: str = "output"
     checkpoints_dir: str = "checkpoints"

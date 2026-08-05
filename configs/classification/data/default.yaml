@@ -4,7 +4,7 @@ val_dir: "test"
 test_dir: "test"
 extensions: [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
 # For debugging purposes, optional
-max_samples: 100
+max_samples: null
 
 # Merge multiple class folders into one label (optional).
 class_mapping: null

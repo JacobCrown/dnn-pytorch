@@ -91,7 +91,7 @@ def _quiet_third_party_loggers() -> None:
 
 def configure_run_logging(
     *,
-    experiment_directory: Path | str | None = None,
+    run_directory: Path | str | None = None,
     logs_subdir: str = "logs",
     full_log_name: str = "main.log",
     console_max_msg_len: int = 720,
@@ -109,9 +109,9 @@ def configure_run_logging(
     **Hydra-only** entrypoints (e.g. eval whose ``hydra.run.dir`` differs from training)
     may pass ``Path(HydraConfig.get().runtime.output_dir).resolve()``.
 
-    Writes to ``<experiment_directory>/<logs_subdir>/<full_log_name>``.
+    Writes to ``<run_directory>/<logs_subdir>/<full_log_name>``.
 
-    Without ``experiment_directory``, falls back to the current working directory (non-Hydra scripts).
+    Without ``run_directory``, falls back to the current working directory (non-Hydra scripts).
 
     Returns:
         Absolute path of the rotating full log file.
@@ -121,8 +121,8 @@ def configure_run_logging(
         return _CONFIGURED_LOG_FILE
 
     base = (
-        Path(experiment_directory).expanduser().resolve()
-        if experiment_directory is not None
+        Path(run_directory).expanduser().resolve()
+        if run_directory is not None
         else Path.cwd().resolve()
     )
     log_root = base / logs_subdir

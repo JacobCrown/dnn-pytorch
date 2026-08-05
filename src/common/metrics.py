@@ -1,19 +1,34 @@
+from typing import ClassVar
 from dataclasses import dataclass, field
-
-
 @dataclass
-class LossMetrics:
-    """Loss metrics for training, validation, and test sets. Each item is the loss value for a given epoch."""
-
+class Metrics:
+    name: ClassVar[str] = ""
     train: list[float] = field(default_factory=list)
     val: list[float] = field(default_factory=list)
     test: list[float] = field(default_factory=list)
+    def __post_init__(self) -> None:
+        if not self.name:
+            raise NotImplementedError(f"{type(self).__name__} must define name")
+    @property
+    def get_latest_metrics(self) -> dict[str, float]:
+        return {
+            f"train_{self.name}": self.train[-1],
+            f"val_{self.name}": self.val[-1],
+        }
+
+    def to_dict(self):
+        return {
+            f"train_{self.name}": self.train,
+            f"val_{self.name}": self.val,
+            f"test_{self.name}": self.test,
+        }
 
 
 @dataclass
-class AccuracyMetrics:
-    """Accuracy metrics for training, validation, and test sets. Each item is the accuracy value for a given epoch."""
+class LossMetrics(Metrics):
+    name: ClassVar[str] = "loss"
 
-    train: list[float] = field(default_factory=list)
-    val: list[float] = field(default_factory=list)
-    test: list[float] = field(default_factory=list)
+
+@dataclass
+class AccuracyMetrics(Metrics):
+    name: ClassVar[str] = "accuracy"

@@ -1,7 +1,7 @@
 # Training hyperparameters
-epochs: 5
-batch_size: 256
-num_workers: 4
+epochs: 3
+batch_size: 1024
+num_workers: 12
 pin_memory: true
 shuffle: true
 
@@ -20,29 +20,17 @@ optimizer:
 scheduler:
   name: CosineAnnealingLR
   params:
-    T_max: 5
+    T_max: 30
     eta_min: 0.0001
 
 loss_function:
-  - name: FocalLoss
+  - name: SoftCrossEntropyLoss
     weight: 1.0
     params:
-      mode: multiclass
-      gamma: 2.0
+      smooth_factor: 0.1
 
 use_amp: true
 gradient_clip: null
-
-tracking:
-  local_enabled: true
-  wandb_enabled: false
-  wandb_project: null
-  tags: []
-
-distributed:
-  strategy: single
-  backend: nccl
-  find_unused_parameters: false
 
 resume_from_checkpoint: null
 early_stopping_patience: 10

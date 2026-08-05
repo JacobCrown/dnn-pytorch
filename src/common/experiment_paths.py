@@ -16,8 +16,8 @@ def classification_experiment_root(
     batch_size: int,
 ) -> Path:
     dataset_name = Path(data_root).name
-    leaf = f"{model_name}_{height}x{width}_{epochs}epochs_{batch_size}bs"
-    return Path(train_root_dir) / "classification" / dataset_name / leaf
+    leaf = f"{height}x{width}_{epochs}epochs_{batch_size}bs"
+    return Path(train_root_dir) / "classification" / dataset_name / model_name / leaf
 
 
 def segmentation_experiment_root(

@@ -1,8 +1,8 @@
 # CIFAR-100 friendly defaults (32x32 inputs).
-name: "convnextv2_nano"
+name: "convnextv2_tiny"
 in_channels: 3
 pretrained: true
-dropout: 0.2
+dropout: 0.3
 freeze_backbone: true
 freeze_backbone_bn_eval: false
 height: 32

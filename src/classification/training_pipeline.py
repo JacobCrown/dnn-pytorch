@@ -200,16 +200,17 @@ def run_classification_training(
     config: ClassificationConfig,
 ) -> None:
     """Wire datasets, model, optimizer and run training. Callable without Hydra."""
+    run_directory=classification_experiment_root(
+        train_root_dir=config.train.root_dir,
+        data_root=config.data.root,
+        model_name=config.model.name,
+        height=config.model.height,
+        width=config.model.width,
+        epochs=config.train.epochs,
+        batch_size=config.train.batch_size,
+    )
     configure_run_logging(
-        experiment_directory=classification_experiment_root(
-            train_root_dir=config.train.root_dir,
-            data_root=config.data.root,
-            model_name=config.model.name,
-            height=config.model.height,
-            width=config.model.width,
-            epochs=config.train.epochs,
-            batch_size=config.train.batch_size,
-        ),
+        run_directory=run_directory,
         use_rich_console=True,
         quiet_third_party_loggers=True,
     )
@@ -243,6 +244,7 @@ def run_classification_training(
         optimizer=optimizer,
         scheduler=scheduler,
         cfg=config,
+        run_directory=run_directory
     )
 
     logger.info("Starting training for %d epochs", config.train.epochs)
