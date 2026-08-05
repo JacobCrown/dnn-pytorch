@@ -1,8 +1,8 @@
 from pathlib import Path
 
 import mlflow
-from torch import nn
 import torch
+from torch import nn
 
 from src.core.tracker import BaseTracker
 

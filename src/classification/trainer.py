@@ -17,8 +17,8 @@ from src.classification.visualizer import ClassificationVisualizer
 from src.common.experiment_paths import classification_experiment_root
 from src.common.logging import artifact_rel_to_experiment, gpu_epoch_log_suffix
 from src.common.progress_tools import iterate_with_progress
-from src.common.utils import DEVICE
 from src.common.tracker import MLFlowTracker
+from src.common.utils import DEVICE
 from src.core.trainer import BaseTrainer
 
 logger = logging.getLogger(__name__)

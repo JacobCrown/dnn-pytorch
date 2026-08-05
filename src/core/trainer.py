@@ -8,11 +8,11 @@ import torch.optim as optim
 from torch.amp import GradScaler  # type: ignore[reportMissingImports]
 from torch.utils.data import DataLoader
 
-from src.core.tracker import BaseTracker
 from src.common.config import BaseTrainingConfig
 from src.common.utils import DEVICE
 from src.core.metrics import BaseMetrics
 from src.core.model_manager import BaseModelManager
+from src.core.tracker import BaseTracker
 from src.core.visualizer import BaseVisualizer
 
 logger = logging.getLogger(__name__)
@@ -119,7 +119,7 @@ class BaseTrainer[
         self._try_resume_from_checkpoint()
 
     def __exit__(self):
-        # End tracker run 
+        # End tracker run
         self.tracker.close_tracker()
 
     @staticmethod

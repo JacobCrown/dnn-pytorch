@@ -1,5 +1,7 @@
-from typing import ClassVar
 from dataclasses import dataclass, field
+from typing import ClassVar
+
+
 @dataclass
 class Metrics:
     name: ClassVar[str] = ""
