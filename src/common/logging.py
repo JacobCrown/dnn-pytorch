@@ -77,7 +77,7 @@ def setup_logging(log_name: str) -> logging.Logger:
 
 
 def _quiet_third_party_loggers() -> None:
-    """Reduce hub/HTTP noise on the console (training signal stays clear)."""
+    """Reduce hub/HTTP/font noise so run logs stay readable."""
     for name in (
         "timm",
         "urllib3",
@@ -85,6 +85,12 @@ def _quiet_third_party_loggers() -> None:
         "huggingface_hub",
         "requests",
         "httpcore",
+        "matplotlib",
+        "matplotlib.font_manager",
+        "matplotlib.pyplot",
+        "git",
+        "git.cmd",
+        "git.util",
     ):
         logging.getLogger(name).setLevel(logging.WARNING)
 

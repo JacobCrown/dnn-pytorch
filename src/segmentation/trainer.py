@@ -14,9 +14,9 @@ from torchmetrics.functional.classification import multiclass_jaccard_index
 from tqdm import tqdm
 
 from src.common.experiment_paths import segmentation_experiment_root
-from src.common.logging import log_gpu_memory
+from src.common.logging import artifact_rel_to_experiment, gpu_epoch_log_suffix
 from src.common.progress_tools import iterate_with_progress
-from src.common.tracking import Tracker
+from src.common.tracker import MLFlowTracker
 from src.common.utils import DEVICE
 from src.core.trainer import BaseTrainer
 from src.segmentation.config import SegmentationConfig
@@ -26,6 +26,16 @@ from src.segmentation.model_manager import SegmentationModelManager
 from src.segmentation.visualizer import SegmentationVisualizer
 
 logger = logging.getLogger(__name__)
+
+def build_predictor_checkpoint_payload(checkpoint: dict) -> dict:
+    """Keep only the fields required by ClassificationPredictor."""
+    required_keys = ("model_config", "model_state_dict", "class_idx_to_rgb", "class_idx_to_name")
+    missing_keys = [key for key in required_keys if key not in checkpoint]
+    if missing_keys:
+        raise ValueError(
+            "Checkpoint is missing predictor fields: " + ", ".join(missing_keys)
+        )
+    return {key: checkpoint[key] for key in required_keys}
 
 
 @dataclass
@@ -85,12 +95,13 @@ def evaluate_segmentation_model(
 
 
 class SegmentationTrainer(
-    BaseTrainer[SegmentationVisualizer, SegmentationMetrics, SegmentationModelManager]
+    BaseTrainer[SegmentationVisualizer, SegmentationMetrics, SegmentationModelManager, MLFlowTracker]
 ):
     """Trainer class for segmentation models."""
 
     metrics_cls = SegmentationMetrics
     visualizer_cls = SegmentationVisualizer
+    tracker_cls = MLFlowTracker
 
     def __init__(
         self,
@@ -98,22 +109,23 @@ class SegmentationTrainer(
         criterion: nn.Module,
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler._LRScheduler,
+        cfg: SegmentationConfig,
+        run_directory: Path,
         train_loader: DataLoader,
         val_loader: DataLoader,
-        cfg: SegmentationConfig,
         test_loader: DataLoader | None = None,
-        tracker: Tracker | None = None,
     ):
         self.cfg: SegmentationConfig = cfg
-        self.tracker = tracker
+        self.class_names = train_loader.dataset.get_class_names()
         super().__init__(
             model_manager=model_manager,
             criterion=criterion,
             optimizer=optimizer,
             scheduler=scheduler,
+            cfg=cfg.train,
+            run_directory=run_directory,
             train_loader=train_loader,
             val_loader=val_loader,
-            cfg=cfg.train,
             test_loader=test_loader,
         )
 
@@ -139,19 +151,16 @@ class SegmentationTrainer(
         - Example images (with and without augmentations)
         - Data distribution (pixel counts per class)
         """
-        logger.info("\n" + "=" * 50)
-        logger.info("GENERATING PRE-TRAIN VISUALIZATIONS")
-        logger.info("=" * 50)
+        logger.info("[viz] pre-train · example grids (with / without aug)")
 
         # Visualize example images
-        logger.info("\n1. Visualizing example images...")
         self.visualizer.visualize_example_images(
             data_loader=self.train_loader,
             num_samples=5,
         )
 
         # Visualize data distribution
-        logger.info("\n2. Visualizing data distribution...")
+        logger.info("[viz] pre-train · class histogram")
         self.visualizer.visualize_data_distribution(
             data_loader=self.train_loader,
         )
@@ -163,11 +172,7 @@ class SegmentationTrainer(
         - Model predictions
         - Training metrics (loss and mIoU curves)
         """
-        logger.info("=" * 50)
-        logger.info("GENERATING POST-TRAIN VISUALIZATIONS")
-        logger.info("=" * 50)
-        # Visualize predictions (use test set if available, otherwise validation set)
-        logger.info("\n1. Visualizing predictions...")
+        logger.info("[viz] post-train · prediction panel")
         prediction_loader = (
             self.test_loader if self.test_loader is not None else self.val_loader
         )
@@ -179,22 +184,24 @@ class SegmentationTrainer(
         )
 
         # Visualize metrics
-        logger.info("\n2. Visualizing training metrics...")
+        logger.info("[viz] post-train · curves & confusion matrix")
         self.visualizer.visualize_metrics(
             metrics=self.metrics,
         )
 
         # Visualize per class metrics
-        logger.info("\n3. Visualizing per class metrics...")
+        logger.info("[viz] post-train · per-class accuracy")
         self.visualizer.visualize_per_class_metrics(
             data_loader=prediction_loader,
             model=self.model,
             use_amp=self.use_amp,
         )
 
-        logger.info("\n" + "=" * 50)
-        logger.info(f"All visualizations saved to: {self.visualize_dir}")
-        logger.info("=" * 50)
+        logger.info(
+            "[viz] outputs under %s",
+            artifact_rel_to_experiment(self.visualize_dir, self.root_dir),
+        )
+
 
     def _train_epoch(self) -> tuple[float, float]:
         """Train for one epoch.
@@ -206,10 +213,14 @@ class SegmentationTrainer(
         total_loss = torch.tensor(0.0, device=DEVICE)
         total_iou = torch.tensor(0.0, device=DEVICE)
         num_batches = len(self.train_loader)
+        trainable_parameters = self.model_manager.get_trainable_parameters()
 
-        pbar = tqdm(self.train_loader, desc=f"Epoch {self.current_epoch + 1}")
 
-        for _, (data, target) in enumerate(pbar):
+        for data, target in iterate_with_progress(
+            self.train_loader,
+            description=f"Epoch {self.current_epoch + 1}/{self.num_epochs} · train",
+            transient=True,
+        ):
             data, target = data.to(DEVICE), target.to(DEVICE)
 
             self.optimizer.zero_grad(set_to_none=True)
@@ -227,21 +238,17 @@ class SegmentationTrainer(
                 if self.grad_clip is not None:
                     self.scaler.unscale_(self.optimizer)
                     torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(), self.grad_clip
+                        trainable_parameters, self.grad_clip
                     )
-                scale_before_step = self.scaler.get_scale()
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
-                if self.scaler.get_scale() >= scale_before_step:
-                    self._after_optimizer_step()
             else:
                 loss.backward()
                 if self.grad_clip is not None:
                     torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(), self.grad_clip
+                        trainable_parameters, self.grad_clip
                     )
                 self.optimizer.step()
-                self._after_optimizer_step()
 
             total_loss += loss
 
@@ -262,13 +269,13 @@ class SegmentationTrainer(
 
             # Training
             train_loss, train_miou = self._train_epoch()
-            self.metrics.losses["train"].append(train_loss)
-            self.metrics.ious["train"].append(train_miou)
+            self.metrics.losses.train.append(train_loss)
+            self.metrics.ious.train.append(train_miou)
 
             # Validation
             val_loss, val_miou = self._validate()
-            self.metrics.losses["val"].append(val_loss)
-            self.metrics.ious["val"].append(val_miou)
+            self.metrics.losses.val.append(val_loss)
+            self.metrics.ious.val.append(val_miou)
 
             # Learning rate scheduling
             if self.scheduler is not None:
@@ -277,23 +284,18 @@ class SegmentationTrainer(
                 else:
                     self.scheduler.step()
 
-            # Logging
-            logger.info(f"Epoch {epoch + 1}/{self.num_epochs}:")
-            logger.info(f"  Train Loss: {train_loss:.4f}, Train mIoU: {train_miou:.4f}")
-            logger.info(f"  Val Loss: {val_loss:.4f}, Val mIoU: {val_miou:.4f}")
 
-            log_gpu_memory(logger)
-
-            if self.tracker is not None:
-                self.tracker.log_metrics(
-                    {
-                        "train_loss": train_loss,
-                        "train_iou": train_miou,
-                        "val_loss": val_loss,
-                        "val_iou": val_miou,
-                    },
-                    step=epoch + 1,
-                )
+            gpu = gpu_epoch_log_suffix()
+            logger.info(
+                "Epoch %d/%d | train loss=%.4f iou=%.2f | val loss=%.4f iou=%.2f%s",
+                epoch + 1,
+                self.num_epochs,
+                train_loss,
+                train_miou,
+                val_loss,
+                val_miou,
+                gpu,
+            )
 
             # Always save last checkpoint
             self._save_checkpoint("last.pth")
@@ -314,13 +316,12 @@ class SegmentationTrainer(
                 logger.info(f"Early stopping triggered after {epoch + 1} epochs")
                 break
 
+        self._save_predictor_checkpoint()
+
         # Evaluate on test set if provided
         if self.test_loader is not None:
-            logger.info("\n" + "=" * 50)
-            logger.info("FINAL TEST EVALUATION")
-            logger.info("=" * 50)
+            logger.info("Hold-out test set")
             self._evaluate(self.test_loader)
-            logger.info("=" * 50)
 
     def _validate(self) -> tuple[float, float]:
         """Validate the model.
@@ -352,30 +353,36 @@ class SegmentationTrainer(
 
     def _evaluate(self, test_loader: DataLoader) -> None:
         """Evaluate the model on test data."""
-        self.model.eval()
-        total_loss = torch.tensor(0.0, device=DEVICE)
-        total_iou = torch.tensor(0.0, device=DEVICE)
-        num_batches = len(test_loader)
+        best_model = self.model_manager.from_checkpoint_path(self.checkpoints_dir / "predictor.pth").model
+        best_model.eval()
+        summary = evaluate_segmentation_model(
+            model=best_model,
+            data_loader=test_loader,
+            criterion=self.criterion,
+            use_amp=self.use_amp,
+            num_classes=len(self.class_names),
+            split_name="Test",
+        )
+        self.metrics.losses.test.append(summary.loss)
+        self.metrics.ious.test.append(summary.iou)
 
-        with torch.inference_mode():
-            for data, target in tqdm(test_loader, desc="Evaluating"):
-                data, target = data.to(DEVICE), target.to(DEVICE)
+    def _save_predictor_checkpoint(self, filename: str = "predictor.pth") -> None:
+        best_checkpoint = self.checkpoints_dir / "best.pth"
+        if not best_checkpoint.exists():
+            logger.warning(
+                "Skipping predictor checkpoint export because no best checkpoint exists"
+            )
+            return
 
-                with autocast(device_type=DEVICE, enabled=self.use_amp):
-                    output = self.model(data)
-                    loss = self.criterion(output, target)
-
-                pred = output.argmax(dim=1)
-                total_iou += self._calculate_iou(pred, target)
-
-                total_loss += loss
-
-        avg_loss = total_loss.item() / num_batches
-        avg_iou = total_iou.item() / num_batches
-
-        logger.info("Test Results:")
-        logger.info(f"  Loss: {avg_loss:.4f}")
-        logger.info(f"  mIoU: {avg_iou:.4f}")
+        checkpoint = self._load_checkpoint_dict(best_checkpoint)
+        predictor_checkpoint = build_predictor_checkpoint_payload(checkpoint)
+        predictor_checkpoint_path = self.checkpoints_dir / filename
+        torch.save(predictor_checkpoint, predictor_checkpoint_path)
+        logger.info(
+            "Saved predictor %s (%.2f MB)",
+            artifact_rel_to_experiment(predictor_checkpoint_path, self.root_dir),
+            predictor_checkpoint_path.stat().st_size / (1024 * 1024),
+        )
 
     def _create_checkpoint_task_specific(self) -> dict:
         dataset = t.cast(SegmentationDataset, self.train_loader.dataset)

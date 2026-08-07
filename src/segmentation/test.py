@@ -80,7 +80,7 @@ def _create_test_loader(
 )
 def main(cfg: dict) -> None:
     experiment_dir = Path(HydraConfig.get().runtime.output_dir).resolve()
-    configure_run_logging(experiment_directory=experiment_dir)
+    configure_run_logging(run_directory=experiment_dir)
     config = SegmentationTestConfig.from_dict(
         OmegaConf.to_container(cfg, resolve=True, throw_on_missing=False)  # type: ignore[arg-type]
     )

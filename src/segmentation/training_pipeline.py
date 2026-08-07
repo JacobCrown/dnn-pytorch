@@ -15,12 +15,9 @@ from src.common.augmentations import get_augmentations
 from src.common.data_utils import create_data_loaders
 from src.common.exceptions import DataLoaderException
 from src.common.experiment_paths import segmentation_experiment_root
-from src.common.experiment_registry import write_run_record
-from src.common.logging import configure_run_logging
 from src.common.losses import get_loss_function
 from src.common.optimizers import get_optimizer
 from src.common.schedulers import get_scheduler
-from src.common.tracking import build_tracker
 from src.common.training_contracts import TrainingArtifacts
 from src.segmentation.config import SegmentationConfig, SegmentationModelConfig
 from src.segmentation.dataset import SegmentationDataset
@@ -42,39 +39,6 @@ class SegmentationDataPipeline:
     train_loader: DataLoader
     val_loader: DataLoader
     test_loader: DataLoader | None
-
-
-@dataclass(frozen=True)
-class SegmentationTrainingMetrics:
-    """Metric history collected by ``SegmentationTrainer``."""
-
-    losses: dict[str, list[float]]
-    ious: dict[str, list[float]]
-    best_val_loss: float | None
-    best_val_iou: float | None
-    final_train_loss: float | None
-    final_train_iou: float | None
-    final_val_loss: float | None
-    final_val_iou: float | None
-    test_loss: float | None
-    test_iou: float | None
-
-
-@dataclass(frozen=True)
-class SegmentationTrainingOutcome:
-    """Paths and metrics after a completed segmentation training run."""
-
-    artifacts: TrainingArtifacts
-    metrics: SegmentationTrainingMetrics
-    used_validation: bool
-
-    @property
-    def checkpoints_dir(self) -> Path:
-        return self.artifacts.checkpoints_dir
-
-    @property
-    def best_checkpoint_path(self) -> Path | None:
-        return self.artifacts.best_checkpoint_path
 
 
 def apply_classes_from_train_dataset(
@@ -221,48 +185,19 @@ def _best_iou_for_min_loss(losses: list[float], ious: list[float]) -> float | No
     return float(ious[best_idx])
 
 
-def _collect_training_metrics(
-    trainer: SegmentationTrainer,
-) -> SegmentationTrainingMetrics:
-    losses = {
-        split: [float(value) for value in values]
-        for split, values in trainer.metrics.losses.items()
-    }
-    ious = {
-        split: [float(value) for value in values]
-        for split, values in trainer.metrics.ious.items()
-    }
-    val_losses = losses.get("val", [])
-    val_ious = ious.get("val", [])
-    return SegmentationTrainingMetrics(
-        losses=losses,
-        ious=ious,
-        best_val_loss=min(val_losses) if val_losses else None,
-        best_val_iou=_best_iou_for_min_loss(val_losses, val_ious),
-        final_train_loss=_last(losses.get("train", [])),
-        final_train_iou=_last(ious.get("train", [])),
-        final_val_loss=_last(val_losses),
-        final_val_iou=_last(val_ious),
-        test_loss=_last(losses.get("test", [])),
-        test_iou=_last(ious.get("test", [])),
-    )
-
-
 def run_segmentation_training(
     config: SegmentationConfig,
-) -> SegmentationTrainingOutcome:
+) -> None:
     """Wire datasets, model, optimizer and run training. Callable without Hydra."""
-    configure_run_logging(
-        experiment_directory=segmentation_experiment_root(
-            train_root_dir=config.train.root_dir,
-            data_root=config.data.root,
-            architecture=config.model.architecture,
-            encoder_name=config.model.encoder_name,
-            height=config.model.height,
-            width=config.model.width,
-            epochs=config.train.epochs,
-            batch_size=config.train.batch_size,
-        ),
+    run_directory=segmentation_experiment_root(
+        train_root_dir=config.train.root_dir,
+        data_root=config.data.root,
+        architecture=config.model.architecture,
+        encoder_name=config.model.encoder_name,
+        height=config.model.height,
+        width=config.model.width,
+        epochs=config.train.epochs,
+        batch_size=config.train.batch_size,
     )
     data_preproc = get_augmentations(config.model.preprocessing)
     data_pipeline = build_segmentation_data_pipeline(config, data_preproc)
@@ -273,25 +208,11 @@ def run_segmentation_training(
     log_model_summary(segmentation_model_manager, config.model)
 
     logger.info("Setting up optimizer and scheduler...")
-    optimizer = get_optimizer(config.train.optimizer, segmentation_model_manager.model.parameters())
+    optimizer = get_optimizer(
+        config.train.optimizer, segmentation_model_manager.model.parameters()
+    )
     scheduler = get_scheduler(config.train.scheduler, optimizer)
     criterion = get_loss_function(config.train.loss_function)
-
-    experiment_root = segmentation_experiment_root(
-        train_root_dir=config.train.root_dir,
-        data_root=config.data.root,
-        architecture=config.model.architecture,
-        encoder_name=config.model.encoder_name,
-        height=config.model.height,
-        width=config.model.width,
-        epochs=config.train.epochs,
-        batch_size=config.train.batch_size,
-    )
-    tracker = build_tracker(
-        config=config.train.tracking,
-        run_dir=experiment_root,
-        task_name="segmentation",
-    )
 
     trainer = SegmentationTrainer(
         model_manager=segmentation_model_manager,
@@ -302,31 +223,9 @@ def run_segmentation_training(
         optimizer=optimizer,
         scheduler=scheduler,
         cfg=config,
-        tracker=tracker,
+        run_directory=run_directory,
     )
 
     logger.info("Starting training for %d epochs", config.train.epochs)
-    trainer.train()
 
-    outcome = SegmentationTrainingOutcome(
-        artifacts=TrainingArtifacts.from_completed_run(
-            trainer.root_dir,
-            checkpoints_dir_name=config.train.checkpoints_dir,
-            logs_dir_name=config.train.logs_dir,
-            visualizations_dir_name=config.train.visualize_dir,
-        ),
-        metrics=_collect_training_metrics(trainer),
-        used_validation=True,
-    )
-    write_run_record(
-        task_name="segmentation",
-        artifacts=outcome.artifacts,
-        metrics=outcome.metrics,
-        config=config.to_dict(),
-        used_validation=outcome.used_validation,
-    )
-    tracker.log_metrics(asdict(outcome.metrics))
-    if outcome.best_checkpoint_path is not None:
-        tracker.log_artifact("best_checkpoint", outcome.best_checkpoint_path)
-    tracker.close()
-    return outcome
+    trainer.train()

@@ -49,3 +49,7 @@ class BaseModelManager[ModelConfigType: BaseConfig](ABC):
     @abstractmethod
     def from_checkpoint_path(cls, checkpoint_path: Path) -> Self:
         pass
+
+    def get_trainable_parameters(self) -> list[nn.Parameter]:
+        """Return parameters that should be optimized."""
+        return [param for param in self.model.parameters() if param.requires_grad]

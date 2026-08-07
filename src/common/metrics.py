@@ -4,10 +4,16 @@ from typing import ClassVar
 
 @dataclass
 class Metrics:
+    """Base class for holding training and evaluation metrics"""
+
+    # To be filled in Child class
     name: ClassVar[str] = ""
+
+    # Common values
     train: list[float] = field(default_factory=list)
     val: list[float] = field(default_factory=list)
     test: list[float] = field(default_factory=list)
+
     def __post_init__(self) -> None:
         if not self.name:
             raise NotImplementedError(f"{type(self).__name__} must define name")
@@ -34,3 +40,8 @@ class LossMetrics(Metrics):
 @dataclass
 class AccuracyMetrics(Metrics):
     name: ClassVar[str] = "accuracy"
+
+
+@dataclass
+class IoUMetrics(Metrics):
+    name: ClassVar[str] = "iou"

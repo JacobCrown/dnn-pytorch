@@ -36,12 +36,14 @@ def main(cfg: dict) -> None:
         epochs=config.train.epochs,
         batch_size=config.train.batch_size,
     ).resolve()
-    configure_run_logging(experiment_directory=experiment_dir)
+    run_log_path = configure_run_logging(
+        run_directory=experiment_dir,
+        use_rich_console=True,
+        quiet_third_party_loggers=True,
+    )
+    logger = logging.getLogger(__name__)
+    logger.info("Full run log (all levels): %s", run_log_path)
     logger.info("Resolved configuration:\n%s", OmegaConf.to_yaml(cfg, resolve=True))
-
-    # ---------------------------------------------------------------------
-    # Seed & device
-    # ---------------------------------------------------------------------
     set_seed()
     logger.info("Device: %s", DEVICE)
 
@@ -49,13 +51,4 @@ def main(cfg: dict) -> None:
 
 
 if __name__ == "__main__":
-    # import cProfile
-    # import pstats
-
-    # pr = cProfile.Profile()
-    # pr.enable()
     main()
-    # pr.disable()
-    # stats = pstats.Stats(pr).sort_stats("tottime")  # Sort po kumulatywnym czasie
-    # stats.print_stats(20)  # Top 20 funkcji
-    # stats.dump_stats("profile.prof")

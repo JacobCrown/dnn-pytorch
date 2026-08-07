@@ -186,7 +186,8 @@ class ClassificationTrainer(
         Returns:
             Tuple of (average_loss, accuracy)
         """
-        self.model_manager.prepare_model_for_training()
+        # self.model_manager.prepare_model_for_training()
+        self.model.train()
         total_loss = torch.tensor(0.0, device=DEVICE)
         correct = torch.tensor(0.0, device=DEVICE, dtype=torch.int64)
         total = torch.tensor(0.0, device=DEVICE, dtype=torch.int64)
@@ -336,6 +337,7 @@ class ClassificationTrainer(
     def _evaluate(self, test_loader: DataLoader) -> None:
         """Evaluate the model on test data."""
         best_model = self.model_manager.from_checkpoint_path(self.checkpoints_dir / "predictor.pth").model
+        best_model.eval()
         avg_loss, accuracy, _ = evaluate_classification_model(
             model=best_model,
             data_loader=test_loader,

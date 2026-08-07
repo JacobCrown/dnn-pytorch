@@ -10,8 +10,11 @@ import torch
 
 from src.core.dataset import BaseDataset
 from src.segmentation.config import ClassConfig, ClassMappingConfig
-from src.segmentation.mask_utils import (build_lookup_table, find_mask_file,
-                                         prepare_masks)
+from src.segmentation.mask_utils import (
+    build_lookup_table,
+    find_mask_file,
+    prepare_masks,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -297,9 +300,15 @@ def _validate_class_mapping(
 
     for target_name in target_configs:
         if target_name in source_to_target:
-            raise ValueError(
-                f"class_mapping target '{target_name}' is also a source in map_classes"
-            )
+            mapped_to = source_to_target[target_name]
+            if mapped_to != target_name:
+                raise ValueError(
+                    f"class_mapping target '{target_name}' is also a source in "
+                    f"map_classes mapped to '{mapped_to}'; a label cannot be a "
+                    f"merge target in one group and a remapped source in another. "
+                    f"Listing '{target_name}' in map_classes together with other "
+                    f"aliases ({target_name} -> {target_name}) is allowed."
+                )
 
     return source_to_target, target_configs
 
@@ -312,12 +321,17 @@ def _build_final_classes(
 ) -> list[ClassConfig]:
     mapped_sources = set(source_to_target.keys())
     final_classes = [c for c in class_config if c.name not in mapped_sources]
+    final_names = {c.name for c in final_classes}
 
     for target_name, mapping in target_configs.items():
-        if target_name not in base_by_name:
-            final_classes.append(
-                ClassConfig(name=mapping.name, pixel_value=mapping.pixel_value)
-            )
+        if target_name in final_names:
+            continue
+        if mapping.pixel_value:
+            pixel_value = mapping.pixel_value
+        else:
+            pixel_value = base_by_name[target_name].pixel_value
+        final_classes.append(ClassConfig(name=target_name, pixel_value=pixel_value))
+        final_names.add(target_name)
 
     rgb_to_name: dict[tuple[int, int, int], str] = {}
     for c in final_classes:

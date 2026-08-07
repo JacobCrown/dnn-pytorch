@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 
+from src.common.metrics import IoUMetrics
 from src.core.metrics import BaseMetrics
 
 
@@ -7,12 +8,4 @@ from src.core.metrics import BaseMetrics
 class SegmentationMetrics(BaseMetrics):
     """Metrics specific to segmentation tasks."""
 
-    ious: dict[str, list[float]] = field(default_factory=dict)
-
-    def __post_init__(self):
-        super().__post_init__()
-        self.ious = {
-            "train": [],
-            "val": [],
-            "test": [],
-        }
+    ious: IoUMetrics = field(default_factory=IoUMetrics)

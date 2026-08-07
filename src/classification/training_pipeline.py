@@ -20,7 +20,6 @@ from src.classification.trainer import ClassificationTrainer
 from src.common.augmentations import get_augmentations
 from src.common.data_utils import create_data_loaders
 from src.common.experiment_paths import classification_experiment_root
-from src.common.logging import configure_run_logging
 from src.common.losses import get_loss_function
 from src.common.optimizers import get_optimizer
 from src.common.schedulers import get_scheduler
@@ -152,10 +151,6 @@ def log_data_pipeline_summary(
             data_dist.percentage,
         )
 
-    if data_pipeline.val_loader is None:
-        logger.warning(
-            "No validation data loader; training will not use a validation set"
-        )
     if data_pipeline.test_loader is None:
         logger.warning("No test loader found, skipping final evaluation")
 
@@ -209,11 +204,6 @@ def run_classification_training(
         epochs=config.train.epochs,
         batch_size=config.train.batch_size,
     )
-    configure_run_logging(
-        run_directory=run_directory,
-        use_rich_console=True,
-        quiet_third_party_loggers=True,
-    )
     data_preproc = get_augmentations(config.model.preprocessing)
     data_pipeline = build_classification_data_pipeline(config, data_preproc)
     log_data_pipeline_summary(config, data_pipeline)
@@ -244,7 +234,7 @@ def run_classification_training(
         optimizer=optimizer,
         scheduler=scheduler,
         cfg=config,
-        run_directory=run_directory
+        run_directory=run_directory,
     )
 
     logger.info("Starting training for %d epochs", config.train.epochs)

@@ -54,7 +54,6 @@ class ClassificationModelManager(BaseModelManager[ClassificationModelConfig]):
 
     def load_model_state_dict(self, state_dict: dict) -> None:
         self.model.load_state_dict(state_dict)
-        self._apply_freeze_policy()
 
     def check_model_config(self, config: dict) -> None:
         if config["name"] != self.model_cfg.name:
@@ -100,10 +99,6 @@ class ClassificationModelManager(BaseModelManager[ClassificationModelConfig]):
             raise ValueError(
                 f"Trained model config preprocessing ({config['preprocessing']}) does not match the current model config preprocessing ({current_preprocessing})"
             )
-
-    def get_trainable_parameters(self) -> list[nn.Parameter]:
-        """Return parameters that should be optimized."""
-        return [param for param in self.model.parameters() if param.requires_grad]
 
     def prepare_model_for_training(self) -> None:
         """Restore train mode while keeping frozen backbone batch norms in eval."""

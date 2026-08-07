@@ -33,6 +33,6 @@ def segmentation_experiment_root(
 ) -> Path:
     dataset_name = Path(data_root).name
     leaf = (
-        f"{architecture}_{encoder_name}_{height}x{width}_{epochs}epochs_{batch_size}bs"
+        f"{height}hx{width}w_{epochs}epochs_{batch_size}bs"
     )
-    return Path(train_root_dir) / "segmentation" / dataset_name / leaf
+    return Path(train_root_dir) / "segmentation" / dataset_name / f"{architecture}_{encoder_name}" / leaf

@@ -14,9 +14,9 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.common.utils import DEVICE
-from src.core.metrics import BaseMetrics
 from src.core.visualizer import BaseVisualizer
 from src.segmentation.dataset import DataDistribution, SegmentationDataset
+from src.segmentation.metrics import SegmentationMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -452,7 +452,7 @@ class SegmentationVisualizer(BaseVisualizer):
 
     def visualize_metrics(
         self,
-        metrics: BaseMetrics,
+        metrics: SegmentationMetrics,
         figsize: tuple[int, int] = (12, 5),
     ) -> None:
         """Visualize training metrics.
@@ -462,7 +462,7 @@ class SegmentationVisualizer(BaseVisualizer):
         2. IoU curves (train and validation) if available
 
         Args:
-            metrics: Metrics object with training history (BaseMetrics or subclass)
+            metrics: Metrics object with training history (SegmentationMetrics or subclass)
             figsize: Figure size for the plots
         """
         # Plot 1: Loss curves
@@ -579,7 +579,7 @@ class SegmentationVisualizer(BaseVisualizer):
 
         logger.info(f"Per-class mIoU plot saved to {save_path}")
 
-    def _plot_loss_curves(self, metrics: BaseMetrics, figsize: tuple[int, int]) -> None:
+    def _plot_loss_curves(self, metrics: SegmentationMetrics, figsize: tuple[int, int]) -> None:
         """Plot loss curves.
 
         Args:
@@ -588,9 +588,9 @@ class SegmentationVisualizer(BaseVisualizer):
         """
         _, ax = plt.subplots(figsize=figsize)
 
-        for key, values in metrics.losses.items():
-            if values:  # Only plot if there are values
-                ax.plot(values, label=f"{key.capitalize()} Loss", linewidth=2)
+        ax.plot(metrics.losses.train, label="Train Loss", linewidth=2)
+        ax.plot(metrics.losses.val, label="Validation Loss", linewidth=2)
+        ax.plot(metrics.losses.test, label="Test Loss", linewidth=2)
 
         ax.set_title("Training and Validation Loss", fontsize=14, fontweight="bold")
         ax.set_xlabel("Epoch", fontsize=12)
@@ -605,7 +605,7 @@ class SegmentationVisualizer(BaseVisualizer):
 
         logger.info(f"Loss curves saved to {save_path}")
 
-    def _plot_iou_curves(self, metrics: BaseMetrics, figsize: tuple[int, int]) -> None:
+    def _plot_iou_curves(self, metrics: SegmentationMetrics, figsize: tuple[int, int]) -> None:
         """Plot IoU/mIoU curves.
 
         Args:
@@ -614,11 +614,11 @@ class SegmentationVisualizer(BaseVisualizer):
         """
         _, ax = plt.subplots(figsize=figsize)
 
-        # Access ious - will work for any metrics subclass that has it
-        ious = getattr(metrics, "ious", {})
-        for key, values in ious.items():
-            if values:  # Only plot if there are values
-                ax.plot(values, label=f"{key.capitalize()} mIoU", linewidth=2)
+
+        ious = metrics.ious
+        ax.plot(ious.train, label="Train mIoU", linewidth=2)
+        ax.plot(ious.val, label="Validation mIoU", linewidth=2)
+        ax.plot(ious.test, label="Test mIoU", linewidth=2)
 
         ax.set_title("Training and Validation mIoU", fontsize=14, fontweight="bold")
         ax.set_xlabel("Epoch", fontsize=12)

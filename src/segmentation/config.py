@@ -1,8 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.common.config import (AugmentationConfig, BaseConfig,
-                               BaseTrainingConfig)
+from src.common.config import AugmentationConfig, BaseConfig, BaseTrainingConfig
 
 
 @dataclass

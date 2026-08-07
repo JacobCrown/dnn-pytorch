@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 from torch.utils.data import DataLoader
 
@@ -19,6 +20,7 @@ class BaseVisualizer(ABC):
 
     def __init__(self, save_dir: Path):
         self.save_dir = save_dir
+        plt.switch_backend("Agg")
 
     @staticmethod
     def _denormalize_image(image: np.ndarray) -> np.ndarray:

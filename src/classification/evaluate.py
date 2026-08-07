@@ -1,7 +1,5 @@
 import logging
-from dataclasses import dataclass
 
-import numpy as np
 import torch
 from sklearn.metrics import classification_report, confusion_matrix
 from torch import autocast, nn
