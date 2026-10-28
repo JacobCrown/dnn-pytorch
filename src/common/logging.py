@@ -4,9 +4,6 @@ from pathlib import Path
 
 import torch
 
-_LOGGING_CONFIGURED = False
-_CONFIGURED_LOG_FILE: Path | None = None
-
 
 class BriefConsoleFilter(logging.Filter):
     """Drop long INFO/DEBUG messages on the console while keeping WARN+ untouched."""
@@ -122,9 +119,6 @@ def configure_run_logging(
     Returns:
         Absolute path of the rotating full log file.
     """
-    global _LOGGING_CONFIGURED, _CONFIGURED_LOG_FILE
-    if _LOGGING_CONFIGURED and _CONFIGURED_LOG_FILE is not None:
-        return _CONFIGURED_LOG_FILE
 
     base = (
         Path(run_directory).expanduser().resolve()

@@ -124,7 +124,7 @@ class BaseTrainer[
         # Try to resume from checkpoint if specified
         self._try_resume_from_checkpoint()
 
-    def __exit__(self):
+    def __del__(self):
         # End tracker run
         self.tracker.close_tracker()
 
