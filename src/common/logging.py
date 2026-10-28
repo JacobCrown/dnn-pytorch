@@ -4,6 +4,8 @@ from pathlib import Path
 
 import torch
 
+from src.common.utils import DEVICE
+
 
 class BriefConsoleFilter(logging.Filter):
     """Drop long INFO/DEBUG messages on the console while keeping WARN+ untouched."""
@@ -69,7 +71,6 @@ def setup_logging(log_name: str) -> logging.Logger:
         file_handler.setLevel(logging.INFO)
         file_handler.setFormatter(console_fmt)
         named.addHandler(file_handler)
-
     return named
 
 
@@ -90,6 +91,10 @@ def _quiet_third_party_loggers() -> None:
         "git.util",
     ):
         logging.getLogger(name).setLevel(logging.WARNING)
+    
+    for name in ("mlflow", "mlflow.pytorch", "mlflow.utils.requirements_utils",
+             "mlflow.utils.uv_utils", "mlflow.utils.environment"):
+        logging.getLogger(name).setLevel(logging.ERROR)
 
 
 def configure_run_logging(
@@ -174,22 +179,7 @@ def configure_run_logging(
         console_handler.addFilter(BriefConsoleFilter(max_len=console_max_msg_len))
         console_handler.setFormatter(fmt)
         root.addHandler(console_handler)
-
-    _LOGGING_CONFIGURED = True
-    _CONFIGURED_LOG_FILE = log_path.resolve()
-    return _CONFIGURED_LOG_FILE
-
-
-def reset_run_logging_configuration() -> None:
-    """Reset process-global logging gate before configuring a new run."""
-    global _LOGGING_CONFIGURED, _CONFIGURED_LOG_FILE
-    _LOGGING_CONFIGURED = False
-    _CONFIGURED_LOG_FILE = None
-
-
-def reset_run_logging_configuration_for_testing() -> None:
-    """Backward-compatible alias used by tests."""
-    reset_run_logging_configuration()
+    return log_path.resolve()
 
 
 def log_gpu_memory(logger: logging.Logger) -> None:
@@ -207,3 +197,12 @@ def gpu_epoch_log_suffix() -> str:
         torch.cuda.reset_peak_memory_stats()
         return f"  |  GPU max alloc {mb:.0f} MB"
     return ""
+
+def run_train_info_log(logger_name: str, run_log_path: Path, cfg: str) -> None:
+    logger = logging.getLogger(logger_name)
+    logger.info("--------------------------------")
+
+    logger.info("Run information:")
+    logger.info("Full run log (all levels): %s", run_log_path)
+    logger.info("Resolved configuration:\n%s", cfg)
+    logger.info("Device: %s", DEVICE)

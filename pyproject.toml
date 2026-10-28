@@ -33,7 +33,6 @@ dependencies = [
   "wandb>=0.26.1",
   "isort>=8.0.1",
   "mlflow>=3.15.1",
-  "pynvml>=13.0.1",
   "psutil>=7.2.1",
 ]
 

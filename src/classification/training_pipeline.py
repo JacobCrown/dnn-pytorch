@@ -196,13 +196,7 @@ def run_classification_training(
 ) -> None:
     """Wire datasets, model, optimizer and run training. Callable without Hydra."""
     run_directory=classification_experiment_root(
-        train_root_dir=config.train.root_dir,
-        data_root=config.data.root,
-        model_name=config.model.name,
-        height=config.model.height,
-        width=config.model.width,
-        epochs=config.train.epochs,
-        batch_size=config.train.batch_size,
+        config=config,
     )
     data_preproc = get_augmentations(config.model.preprocessing)
     data_pipeline = build_classification_data_pipeline(config, data_preproc)

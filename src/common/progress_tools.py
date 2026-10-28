@@ -10,6 +10,7 @@ def iterate_with_progress[T](
     description: str,
     *,
     transient: bool = True,
+    total: int | None = None,
 ) -> Iterator[T]:
     """Iterate with a Rich bar showing elapsed time and ETA (stderr, aligns with logging)."""
     from rich.console import Console
@@ -32,4 +33,4 @@ def iterate_with_progress[T](
         transient=transient,
     )
     with progress:
-        yield from progress.track(iterable, description=description)
+        yield from progress.track(iterable, description=description, total=total)

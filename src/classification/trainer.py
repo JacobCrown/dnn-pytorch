@@ -110,13 +110,7 @@ class ClassificationTrainer(
     def _get_root_dir_path(self) -> Path:
         """Get the path of the root directory."""
         return classification_experiment_root(
-            train_root_dir=self.cfg.train.root_dir,
-            data_root=self.cfg.data.root,
-            model_name=self.cfg.model.name,
-            height=self.cfg.model.height,
-            width=self.cfg.model.width,
-            epochs=self.cfg.train.epochs,
-            batch_size=self.cfg.train.batch_size,
+            config=self.cfg,
         )
 
     def _visualize_pre_train(self) -> None:
@@ -186,7 +180,6 @@ class ClassificationTrainer(
         Returns:
             Tuple of (average_loss, accuracy)
         """
-        # self.model_manager.prepare_model_for_training()
         self.model.train()
         total_loss = torch.tensor(0.0, device=DEVICE)
         correct = torch.tensor(0.0, device=DEVICE, dtype=torch.int64)
@@ -338,7 +331,7 @@ class ClassificationTrainer(
         """Evaluate the model on test data."""
         best_model = self.model_manager.from_checkpoint_path(self.checkpoints_dir / "predictor.pth").model
         best_model.eval()
-        avg_loss, accuracy, _ = evaluate_classification_model(
+        avg_loss, accuracy, model_input = evaluate_classification_model(
             model=best_model,
             data_loader=test_loader,
             criterion=self.criterion,
@@ -349,7 +342,7 @@ class ClassificationTrainer(
         self.metrics.losses.test.append(avg_loss)
         self.metrics.accuracies.test.append(accuracy)
         # Skip loggin for now. Now focus on different things
-        # self.tracker.log_model(pytorch_model=best_model, name="best model", input_example=model_input)
+        self.tracker.log_model(pytorch_model=best_model, name="best model", input_example=model_input)
 
     def _save_predictor_checkpoint(self, filename: str = "predictor.pth") -> None:
         best_checkpoint = self.checkpoints_dir / "best.pth"

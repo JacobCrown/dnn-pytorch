@@ -34,3 +34,7 @@ configs/segmentation/**
 !configs/segmentation/**/
 !configs/segmentation/**/default.yaml
 !configs/segmentation/**/minimal.yaml
+
+# MLFlow
+mlruns/
+multirun/
