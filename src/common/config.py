@@ -148,35 +148,6 @@ class LossFunctionConfig(BaseConfig):
 
 
 @dataclass
-class EMAConfig(BaseConfig):
-    """Exponential moving average settings for model weights."""
-
-    enabled: bool = False
-    decay: float = 0.9999
-    update_after_step: int = 0
-    update_every: int = 1
-
-
-@dataclass
-class TrackingConfig(BaseConfig):
-    """Training run tracking settings."""
-
-    local_enabled: bool = True
-    wandb_enabled: bool = False
-    wandb_project: str | None = None
-    tags: list[str] = field(default_factory=list)
-
-
-@dataclass
-class DistributedTrainingConfig(BaseConfig):
-    """Distributed training strategy settings."""
-
-    strategy: str = "single"
-    backend: str = "nccl"
-    find_unused_parameters: bool = False
-
-
-@dataclass
 class BaseDataConfig(BaseConfig):
     """Configuration for data loading and preprocessing."""
 

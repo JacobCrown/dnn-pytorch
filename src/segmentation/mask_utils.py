@@ -9,7 +9,8 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from tqdm import tqdm
+
+from src.common.progress_tools import iterate_with_progress
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +81,9 @@ def prepare_masks(
         use_multiprocessing = num_workers > 1
 
     if not use_multiprocessing:
-        for image_file in tqdm(
+        for image_file in iterate_with_progress(
             image_files,
-            desc=f"Preparing mask files for {masks_dir.parent}",
+            description=f"Preparing masks · {masks_dir.parent.name}",
             total=len(image_files),
         ):
             _process_mask(
@@ -115,10 +116,10 @@ def prepare_masks(
         iterator = pool.imap_unordered(_process_mask_worker, process_args, chunksize)
         successful = 0
         total = 0
-        for _, success in tqdm(
+        for _, success in iterate_with_progress(
             iterator,
+            description=f"Preparing masks · {masks_dir.parent.name}",
             total=len(image_files),
-            desc=f"Preparing mask files for {masks_dir.parent}",
         ):
             total += 1
             if success:

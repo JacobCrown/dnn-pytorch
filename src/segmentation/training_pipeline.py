@@ -121,14 +121,22 @@ def build_segmentation_data_pipeline(
 
 def log_data_pipeline_summary(data_pipeline: SegmentationDataPipeline) -> None:
     train_dataset = data_pipeline.train_dataset
+    train_class_names = train_dataset.get_class_names()
+    logger.info(
+        "Final class names: %d classes (full list at DEBUG)", len(train_class_names)
+    )
+    logger.debug("Final class names: %s", train_class_names)
+
     data_distribution = train_dataset.get_data_distribution()
     logger.info(
-        "Data distribution (%d classes; detail at DEBUG)", len(data_distribution)
+        "Data distribution: %d classes (per-class counts at DEBUG)",
+        len(data_distribution),
     )
     for data_dist in data_distribution:
         logger.debug(
-            "\t%s: %.2f%% of pixels",
+            "\t%s: %d (%.2f%%)",
             data_dist.class_name,
+            data_dist.count,
             data_dist.percentage,
         )
 
@@ -189,16 +197,7 @@ def run_segmentation_training(
     config: SegmentationConfig,
 ) -> None:
     """Wire datasets, model, optimizer and run training. Callable without Hydra."""
-    run_directory=segmentation_experiment_root(
-        train_root_dir=config.train.root_dir,
-        data_root=config.data.root,
-        architecture=config.model.architecture,
-        encoder_name=config.model.encoder_name,
-        height=config.model.height,
-        width=config.model.width,
-        epochs=config.train.epochs,
-        batch_size=config.train.batch_size,
-    )
+    run_directory = segmentation_experiment_root(config=config).resolve()
     data_preproc = get_augmentations(config.model.preprocessing)
     data_pipeline = build_segmentation_data_pipeline(config, data_preproc)
     apply_classes_from_train_dataset(config, data_pipeline.train_dataset)

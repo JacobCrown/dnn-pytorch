@@ -11,8 +11,8 @@ import torch
 import torch.nn as nn
 from torch.amp import autocast  # type: ignore[reportMissingImports]
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 
+from src.common.progress_tools import iterate_with_progress
 from src.common.utils import DEVICE
 from src.core.visualizer import BaseVisualizer
 from src.segmentation.dataset import DataDistribution, SegmentationDataset
@@ -178,7 +178,7 @@ class SegmentationVisualizer(BaseVisualizer):
             figsize,
         )
 
-        logger.info(f"Example images saved to {self.save_dir}")
+        logger.debug(f"Example images saved to {self.save_dir}")
 
     @staticmethod
     def _plot_images_with_masks(
@@ -321,7 +321,7 @@ class SegmentationVisualizer(BaseVisualizer):
         plt.savefig(save_path)
         plt.close()
 
-        logger.info(f"Data distribution plot saved to {save_path}")
+        logger.debug(f"Data distribution plot saved to {save_path}")
 
     def visualize_predictions(
         self,
@@ -355,7 +355,11 @@ class SegmentationVisualizer(BaseVisualizer):
         pred_masks = []
 
         with torch.inference_mode():
-            for data, target in tqdm(data_loader, desc="Collecting predictions"):
+            for data, target in iterate_with_progress(
+                data_loader,
+                description="Collect predictions",
+                transient=True,
+            ):
                 if len(images) >= num_samples:
                     break
 
@@ -431,7 +435,7 @@ class SegmentationVisualizer(BaseVisualizer):
         plt.savefig(save_path)
         plt.close()
 
-        logger.info(f"Predictions visualization saved to {save_path}")
+        logger.debug(f"Predictions visualization saved to {save_path}")
 
         # Calculate and log IoU for visualized samples
         total_iou = 0.0
@@ -472,7 +476,7 @@ class SegmentationVisualizer(BaseVisualizer):
         if hasattr(metrics, "ious"):
             self._plot_iou_curves(metrics, figsize)
 
-        logger.info(f"All metrics visualizations saved to {self.save_dir}")
+        logger.debug(f"All metrics visualizations saved to {self.save_dir}")
 
     def visualize_per_class_metrics(
         self,
@@ -503,7 +507,11 @@ class SegmentationVisualizer(BaseVisualizer):
         union_per_class = np.zeros(num_classes)
 
         with torch.inference_mode():
-            for data, target in tqdm(data_loader, desc="Evaluating mIoU per class"):
+            for data, target in iterate_with_progress(
+                data_loader,
+                description="Eval · per-class",
+                transient=True,
+            ):
                 data = data.to(DEVICE)
                 target = target.to(DEVICE)
 
@@ -577,7 +585,7 @@ class SegmentationVisualizer(BaseVisualizer):
         plt.savefig(save_path)
         plt.close()
 
-        logger.info(f"Per-class mIoU plot saved to {save_path}")
+        logger.debug(f"Per-class mIoU plot saved to {save_path}")
 
     def _plot_loss_curves(self, metrics: SegmentationMetrics, figsize: tuple[int, int]) -> None:
         """Plot loss curves.
@@ -603,7 +611,7 @@ class SegmentationVisualizer(BaseVisualizer):
         plt.savefig(save_path)
         plt.close()
 
-        logger.info(f"Loss curves saved to {save_path}")
+        logger.debug(f"Loss curves saved to {save_path}")
 
     def _plot_iou_curves(self, metrics: SegmentationMetrics, figsize: tuple[int, int]) -> None:
         """Plot IoU/mIoU curves.
@@ -631,4 +639,4 @@ class SegmentationVisualizer(BaseVisualizer):
         plt.savefig(save_path)
         plt.close()
 
-        logger.info(f"IoU curves saved to {save_path}")
+        logger.debug(f"IoU curves saved to {save_path}")

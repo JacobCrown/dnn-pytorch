@@ -8,6 +8,7 @@ import albumentations as A
 import numpy as np
 import torch
 
+from src.common.progress_tools import iterate_with_progress
 from src.core.dataset import BaseDataset
 from src.segmentation.config import ClassConfig, ClassMappingConfig
 from src.segmentation.mask_utils import (
@@ -95,7 +96,6 @@ class SegmentationDataset(BaseDataset):
         2. Validates class_mapping (source classes exist, no double-mapping, etc.)
         3. Builds final class list (removes merged sources, adds new targets)
         4. Sets up rgb_to_class_idx mapping (original RGB -> final class index)
-        5. Prints final classes
 
         Returns:
             Final list of ClassConfig after applying mappings.
@@ -107,16 +107,6 @@ class SegmentationDataset(BaseDataset):
         self.rgb_to_class_idx = rgb_to_class_idx
         self.class_idx_to_rgb = class_idx_to_rgb
         self.class_idx_to_name = class_idx_to_name
-
-        if not class_mapping:
-            logger.info("Final classes (no mapping): %d", len(final_classes))
-        else:
-            logger.info(
-                "Final classes after applying class_mapping: %d", len(final_classes)
-            )
-
-        for idx, c in enumerate(final_classes):
-            logger.info("  [%d] %s -> %s", idx, c.name, c.pixel_value)
 
         return final_classes
 
@@ -207,11 +197,18 @@ class SegmentationDataset(BaseDataset):
         pixel_counts = np.zeros(num_classes, dtype=np.int64)
         total_pixels = 0
 
-        for _, mask_path in self.samples:
+        for _, mask_path in iterate_with_progress(
+            self.samples,
+            description="Data distribution",
+            transient=True,
+        ):
             mask = np.load(mask_path.with_suffix(".npy"))
-            flat_mask = mask.flatten()
-            total_pixels += flat_mask.size
-            counts = np.bincount(flat_mask, minlength=num_classes)
+            # Ignore labels (e.g. 255) are outside [0, num_classes) and must be
+            # excluded so np.bincount length matches pixel_counts.
+            labeled = mask.ravel()
+            labeled = labeled[labeled < num_classes]
+            total_pixels += int(labeled.size)
+            counts = np.bincount(labeled, minlength=num_classes)
             pixel_counts += counts
 
         data_distribution = []
