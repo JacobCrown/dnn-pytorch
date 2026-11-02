@@ -38,3 +38,6 @@ configs/segmentation/**
 # MLFlow
 mlruns/
 multirun/
+
+# Cursor folder
+.cursor/
