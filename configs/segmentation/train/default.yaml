@@ -1,7 +1,7 @@
 # Training hyperparameters
-epochs: 50
-batch_size: 12
-num_workers: 8
+epochs: 10
+batch_size: 8
+num_workers: 4
 pin_memory: true
 shuffle: true
 
@@ -39,30 +39,13 @@ loss_function:
 use_amp: true
 gradient_clip: null
 
-ema:
-  enabled: false
-  decay: 0.9999
-  update_after_step: 0
-  update_every: 1
-
-tracking:
-  local_enabled: true
-  wandb_enabled: false
-  wandb_project: null
-  tags: []
-
-distributed:
-  strategy: single
-  backend: nccl
-  find_unused_parameters: false
-
 resume_from_checkpoint: null
-early_stopping_patience: null
+early_stopping_patience: 10
 
 root_dir: "output"
 checkpoints_dir: "checkpoints"
 logs_dir: "logs"
 visualize_dir: "visualizations"
 
-visualize_pre_train: false
-visualize_post_train: false
+visualize_pre_train: true
+visualize_post_train: true

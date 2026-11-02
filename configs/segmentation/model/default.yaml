@@ -1,7 +1,7 @@
-architecture: "DeepLabV3Plus"
-encoder_name: "resnet18"
+architecture: "unetplusplus"
+encoder_name: "mobilenet-v2"
 encoder_weights: "imagenet"
-height: 368
+height: 384
 width: 480
 in_channels: 3
 classes: 20
@@ -11,7 +11,7 @@ params:
 preprocessing:
   - name: Resize
     params:
-      height: 368
+      height: 384
       width: 480
       interpolation: 2
   - name: Normalize

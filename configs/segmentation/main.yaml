@@ -6,8 +6,12 @@ defaults:
   - train: default
   - data: default
   - model: default
-  - override hydra/job_logging: stdout
+  - override hydra/hydra_logging: disabled
 
 hydra:
+  # Same directory as segmentation_experiment_root(): <model>/<HxW>_<epochs>epochs_<bs>bs
   run:
     dir: ${train.root_dir}/segmentation/${basename:${data.root}}/${model.architecture}_${model.encoder_name}_${model.height}x${model.width}_${train.epochs}epochs_${train.batch_size}bs
+
+  sweep:
+    subdir: ${train.root_dir}/segmentation/${basename:${data.root}}/${model.architecture}_${model.encoder_name}_${model.height}x${model.width}_${train.epochs}epochs_${train.batch_size}bs
