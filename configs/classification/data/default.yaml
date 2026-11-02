@@ -1,4 +1,4 @@
-root: "data/classification/cifar-100"
+root: "data/classification/cifar-10"
 train_dir: "train"
 val_dir: "test"
 test_dir: "test"
@@ -8,3 +8,10 @@ max_samples: null
 
 # Merge multiple class folders into one label (optional).
 class_mapping: null
+
+# E.g. class mapping for CIFAR-10 for living and non-living objects:
+# class_mapping:
+#   - name: "living_objects"
+#     map_classes: ["bird", "cat", "deer", "dog", "frog", "horse"]
+#   - name: "non_living_objects"
+#     map_classes: ["airplane", "automobile", "ship", "truck"]

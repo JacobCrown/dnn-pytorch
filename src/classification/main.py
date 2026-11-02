@@ -9,13 +9,14 @@ from src.common.experiment_paths import classification_experiment_root
 from src.common.hydra_resolvers import register_hydra_resolvers
 from src.common.logging import configure_run_logging, run_train_info_log
 from src.common.utils import set_seed
+from src.common.paths import get_config_path
 
 register_hydra_resolvers()
 
 
 @hydra.main(
     version_base=None,
-    config_path="../../configs/classification",
+    config_path=str(get_config_path() / "classification"),
     config_name="main.yaml",
 )
 def main(cfg: dict) -> None:
