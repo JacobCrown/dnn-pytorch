@@ -130,7 +130,7 @@ Every training run produces this set of charts automatically, with no extra code
 |                                                                         |                                                                                        |
 | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | ![Confusion matrix](assets/cls-confusion-matrix.png) *Confusion matrix* | ![Classification predictions](assets/cls-predictions.png) *Predictions on test images* |
-| ![Accuracy curves](assets/cls-accuracy-curves.png) *Accuracy curves*    | ![Per-class accuracy](assets/cls-per-class-accuracy.png) *Per-class accuracy*          |
+| ![Accuracy curves](assets/cls-accuracy-curves.png) *Accuracy curves*    | ![Per-class accuracy](assets/cls-per_class_accuracy.png) *Per-class accuracy*          |
 
 ---
 
