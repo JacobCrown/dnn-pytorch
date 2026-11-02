@@ -7,15 +7,15 @@
 #   params:
 #     p: 0.5
 
-# - name: Affine
-#   params:
-#     p: 0.5
-#     translate_percent: [0.08, 0.08]
-#     scale: [0.85, 1.15]
-#     rotate: [-15, 15]
-#     border_mode: 4
-#     interpolation: 1
-#     fill: 0
+- name: Affine
+  params:
+    p: 0.5
+    translate_percent: [0.08, 0.08]
+    scale: [0.85, 1.15]
+    rotate: [-15, 15]
+    border_mode: 4
+    interpolation: 1
+    fill: 0
 
 # - name: Perspective
 #   params:
