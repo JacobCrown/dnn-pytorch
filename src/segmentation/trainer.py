@@ -41,6 +41,7 @@ def build_predictor_checkpoint_payload(checkpoint: dict) -> dict:
 class SegmentationEvaluationSummary:
     loss: float
     iou: float
+    model_input: torch.Tensor
 
 
 def evaluate_segmentation_model(
@@ -90,7 +91,7 @@ def evaluate_segmentation_model(
         avg_loss,
         avg_iou,
     )
-    return SegmentationEvaluationSummary(loss=avg_loss, iou=avg_iou)
+    return SegmentationEvaluationSummary(loss=avg_loss, iou=avg_iou, model_input=data)
 
 
 class SegmentationTrainer(
@@ -287,6 +288,8 @@ class SegmentationTrainer(
                 gpu,
             )
 
+            self.tracker.log_metrics(self.metrics.get_latest_metrics(), step=epoch)
+
             # Always save last checkpoint
             self._save_checkpoint("last.pth")
 
@@ -359,6 +362,7 @@ class SegmentationTrainer(
         )
         self.metrics.losses.test.append(summary.loss)
         self.metrics.ious.test.append(summary.iou)
+        self.tracker.log_model(pytorch_model=best_model, name="best model", input_example=summary.model_input)
 
     def _save_predictor_checkpoint(self, filename: str = "predictor.pth") -> None:
         best_checkpoint = self.checkpoints_dir / "best.pth"

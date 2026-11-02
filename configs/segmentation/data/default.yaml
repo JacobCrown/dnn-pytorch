@@ -73,7 +73,7 @@ class_config:
     pixel_value: [64, 192, 0]
 
 class_mapping:
-  - name: Road2
+  - name: Road
     pixel_value: [128, 64, 128]   # Road
     map_classes:
       - Road
@@ -102,7 +102,7 @@ class_mapping:
       - LaneMkgsDriv
       - LaneMkgsNonDriv
 
-  - name: Building2
+  - name: Building
     pixel_value: [128, 0, 0]      # Building
     map_classes:
       - Building
