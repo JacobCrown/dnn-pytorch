@@ -1,20 +1,15 @@
-# dnn-pytorch
+# dnn-pytorch: High level API for training Vision Models
 
-Hydra-based PyTorch toolkit for image **classification** and semantic
-**segmentation**. Shared training utilities live under `src/common`; task-specific
-pipelines mirror each other in `src/classification` and `src/segmentation`.
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776ab.svg)![Apache 2.0 license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
 
-## Features
+This project allows end users to:
 
-- Classification (timm backbones) and segmentation (segmentation-models-pytorch)
-- Hydra config composition for data, model, augmentations, and training
-- Local checkpoints, logs, visualizations, and `run.json` experiment records
-- Local JSON tracking (`tracking/events.jsonl`) with optional W&B config stub
-- Experiment compare CLI (`dnn-compare`) and static HTML studio (`dnn-studio`)
-- ONNX export and local JSON inference CLIs for both tasks
-- Classification Optuna search and checkpoint evaluation
-
-See [docs/TRAINING.md](docs/TRAINING.md) for full training workflows.
+* Create various vision models for classification and segmentation tasks
+* Train models and experiment with configs
+* Keep track of training metrics with MLFlow
+* Build augmentation pipelines and preprocessing
+* Merge classes based on config
+* Run multiple experiments with a single line of code
 
 ## Install
 
@@ -24,51 +19,100 @@ Requires Python 3.13+ and [uv](https://github.com/astral-sh/uv).
 uv sync
 ```
 
-Verify before changing training code:
-
-```bash
-uv run pytest tests/unit -q
-uv run ruff check .
-```
-
-End-to-end pipeline tests (synthetic data, ~few seconds):
-
-```bash
-uv run pytest tests/integration -m integration -q
-```
-
 ## Quick start
 
-Minimal classification smoke test (1 epoch, tiny model):
+### Classification
+
+Download example CIFAR-10 dataset to `data/classification/cifar-10`:
 
 ```bash
-uv run python -m src.classification.main train=minimal model=minimal data.max_samples=20
+uv run python3 scripts/download_example_data_classification.py
 ```
 
-Minimal segmentation smoke test:
+Run classification training:
 
 ```bash
-uv run python -m src.segmentation.main train=minimal model=minimal data.max_samples=10
+dnn-train-classification
 ```
 
-Default classification training:
+Look into output/classification for checkpoints, logs and visualizations.
+
+Run experiments:
 
 ```bash
-uv run dnn-train-classification
+dnn-train-classification --multirun model.name=resnet18 train.epochs=10 train.batch_size=128,256
 ```
 
-Default segmentation training:
+The code above will run 2 experimets varying in batch_size parameter.
+
+## Configs
+
+This project uses [hydra](https://hydra.cc/) and [OmegaConf](https://omegaconf.readthedocs.io/en/2.3_branch/index.html#) for managing config. 
+
+It is recommended to use custom config rather than simply modifying the default.yaml files.
+
+E.g. we want to run training on different model than the default one. We can create a resnet18.yaml config file in configs/*/model/ :
+
+```yaml
+name: "resnet18"
+in_channels: 3
+pretrained: true
+... # Rest is as in default.yaml file
+```
+
+In order to run training on our new config we can simply execute:
 
 ```bash
-uv run dnn-train-segmentation
+dnn-train-classification model=resnet18
 ```
 
-Compare local runs:
+We are able to modify all configurable modules, that is model, augmentations, train and dataset however we want and then run it. 
+
+## Modules
+
+Currently we support *classification* module.
+
+Check down below for in detail explanation and how to run experiments with different configurations
+
+### Classification
+
+The `classification` module allows users to train vision models on custom datasets on a classification task.
+
+The models user is able to train are all models from the [timm](https://timm.fast.ai/) library.
+
+If you're not sure what are the available models, run:
 
 ```bash
-uv run dnn-compare output/
-uv run dnn-studio output/
+uv run python3 -c "import timm; print(timm.list_models(\"*convnext*\"))"
 ```
+
+Which will print all models containing 'convnext' inside model architecture name. 
+
+For obtaining all models, run:
+
+```bash
+uv run python3 -c "import timm; print(timm.list_models())"
+```
+
+but the list might be long.
+
+Classification module requires user to have data in a strict structure:
+
+```text
+data/classification/<dataset>/
+  train/<class>/*
+  val/<class>/*
+  test/<class>/*
+```
+
+Look inside example CIFAR-10 folder structure. The class names will be derived automatically from the folder structure. The folder structure will be checked while composing the dataset and errors will be raised if composed incorrectly. 
+
+Correct training produces useful charts. These include:
+
+- Metric curves
+- Confusion matrix
+- Example images with and without augs
+- Best model's predictions and annotations 
 
 ## Data layouts
 
